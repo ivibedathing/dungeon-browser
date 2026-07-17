@@ -118,12 +118,15 @@
     return updateWorld(state, dt);
   };
 
-  // Input-driven actions for one player. Returns true when the world was rebuilt
-  // (stairs or portal travel) and the frame must stop.
-  function updatePlayerActions(state, p, input, dt) {
-    const stats = Entities.effectiveStats(p);
-
-    // Dodge roll (Space): a committed dash with brief invulnerability.
+  // Advance ONE player's position for a frame: the committed dodge dash while it
+  // lasts, otherwise WASD steering, plus facing. Pure w.r.t. the rest of the world
+  // — no attacks, pickups, or events — and takes `grid`/`stats` rather than reading
+  // `state`, so the network client can run this identical code to predict its own
+  // hero (Phase 2) and reconcile against the server without rubber-banding. Returns
+  // true when this call started a new dodge, so the authoritative sim can emit the
+  // dodge juice that the client instead receives as a server event.
+  Game.predictMovement = function (grid, p, input, dt, stats) {
+    let dodgeStarted = false;
     if (input.pressed.has('dodge') && p.dodgeCdT <= 0 && p.dodgeT <= 0) {
       const dmx = (input.keys.d ? 1 : 0) - (input.keys.a ? 1 : 0);
       const dmy = (input.keys.s ? 1 : 0) - (input.keys.w ? 1 : 0);
@@ -131,28 +134,41 @@
       p.dodgeDir = dlen ? { x: dmx / dlen, y: dmy / dlen } : { x: Math.cos(p.facing), y: Math.sin(p.facing) };
       p.dodgeT = 0.22;
       p.dodgeCdT = 0.9;
-      G.burst(state, p.x, p.y, '#c9c2b2', 8, 70);
-      G.sfx(state, 'dodge');
+      dodgeStarted = true;
     }
 
-    // Movement — the roll overrides steering while it lasts.
+    // The roll overrides steering while it lasts.
     if (p.dodgeT > 0) {
-      const moved = G.moveCircle(state.dungeon.grid, p.x, p.y, PLAYER_R, p.dodgeDir.x * 560 * dt, p.dodgeDir.y * 560 * dt);
+      const moved = G.moveCircle(grid, p.x, p.y, PLAYER_R, p.dodgeDir.x * 560 * dt, p.dodgeDir.y * 560 * dt);
       p.x = moved.x;
       p.y = moved.y;
     } else {
-      let mx = (input.keys.d ? 1 : 0) - (input.keys.a ? 1 : 0);
-      let my = (input.keys.s ? 1 : 0) - (input.keys.w ? 1 : 0);
+      const mx = (input.keys.d ? 1 : 0) - (input.keys.a ? 1 : 0);
+      const my = (input.keys.s ? 1 : 0) - (input.keys.w ? 1 : 0);
       if (mx || my) {
         const len = Math.hypot(mx, my);
         const speed = MOVE_SPEED * stats.moveMult;
-        const moved = G.moveCircle(state.dungeon.grid, p.x, p.y, PLAYER_R, (mx / len) * speed * dt, (my / len) * speed * dt);
+        const moved = G.moveCircle(grid, p.x, p.y, PLAYER_R, (mx / len) * speed * dt, (my / len) * speed * dt);
         if (moved.x !== p.x || moved.y !== p.y) {
           p.facing = Math.atan2(my, mx);
         }
         p.x = moved.x;
         p.y = moved.y;
       }
+    }
+    return dodgeStarted;
+  };
+
+  // Input-driven actions for one player. Returns true when the world was rebuilt
+  // (stairs or portal travel) and the frame must stop.
+  function updatePlayerActions(state, p, input, dt) {
+    const stats = Entities.effectiveStats(p);
+
+    // Movement + dodge, shared verbatim with client-side prediction. The sim owns
+    // the juice the client can't: a newly-started roll kicks up dust and a sound.
+    if (Game.predictMovement(state.dungeon.grid, p, input, dt, stats)) {
+      G.burst(state, p.x, p.y, '#c9c2b2', 8, 70);
+      G.sfx(state, 'dodge');
     }
 
     // Attack (hold M to keep swinging) — never mid-roll.
