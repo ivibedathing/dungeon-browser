@@ -23,12 +23,15 @@ P.PROTOCOL_VERSION = 1;
 // pure-UI edges (inv, tree, esc, mute) are client-side concerns and are not
 // accepted here: the server sim has no menus to open.
 P.KEYS = Object.freeze(['w', 'a', 's', 'd', 'space']);
+// `restart` is deliberately absent. Game.update honours it by returning a brand
+// new run state built from players[0] alone — in a room that would silently
+// delete everyone else. Co-op death and run-end rules are Phase 4's job; until
+// then the server has no message that can rebuild a room's world.
 P.EDGES = Object.freeze([
   'dodge',
   'interact',
   'drink',
   'portal',
-  'restart',
   'skill0',
   'skill1',
   'skill2',
