@@ -19,6 +19,11 @@
   const Dungeon = typeof window !== 'undefined' ? window.Dungeon : require('./dungeon.js');
   const TS = Dungeon.TILE_SIZE;
 
+  // The edge actions the server accepts (mirrors server Protocol.EDGES). The client
+  // filters its outbound pressed set to these so pure-UI edges (inv, tree, esc,
+  // mute) — which live client-side — never reach the server and trip its validator.
+  const SEND_EDGES = new Set(['dodge', 'interact', 'drink', 'portal', 'skill0', 'skill1', 'skill2', 'belt0', 'belt1', 'belt2', 'belt3']);
+
   // Render this far behind the newest snapshot so there are almost always two
   // snapshots bracketing the render time to interpolate between. One tick of slack
   // (33 ms) plus headroom for jitter.
@@ -197,7 +202,7 @@
           d: !!input.keys.d,
           space: !!input.keys.space,
         },
-        pressed: [...input.pressed],
+        pressed: [...input.pressed].filter((a) => SEND_EDGES.has(a)),
         mouse: { x: input.mouse.x, y: input.mouse.y, click: !!input.mouse.click, rclick: !!input.mouse.rclick },
       };
       // Keep a replayable copy (keys + pressed are all reconciliation needs).
@@ -343,6 +348,10 @@
       const player = Entities.newPlayer(opts);
       player.id = net.you || 'p0';
       player.dead = false;
+      // Safe defaults until the first reconcile drops the hero at the server spawn;
+      // 0,0 is a border wall, so the fog field just finds nothing rather than NaN.
+      player.x = 0;
+      player.y = 0;
       player.facing = 0;
       player.attackT = 0;
       player.swing = null;
@@ -369,12 +378,32 @@
         kills: 0,
         shake: 0,
         dead: false,
+        deathT: 0,
         floor: 0,
         dungeon: null,
         explored: null,
         flow: { field: null, t: 0 },
         cam: null,
         time: 0,
+        // UI flags the HUD/draw path reads. Online has no menus, town, or boss lock
+        // yet (Phase 4), so these stay at their neutral values — present so UI.draw
+        // never dereferences an undefined field or iterates a missing array.
+        invOpen: false,
+        treeOpen: false,
+        boardOpen: false,
+        trading: false,
+        smithing: false,
+        questing: false,
+        inTown: false,
+        bossFight: false,
+        portalCdT: 0,
+        fade: null,
+        hover: null,
+        shop: null,
+        stash: null,
+        buyback: [],
+        quests: [],
+        milestones: [],
       };
     };
 
@@ -440,9 +469,24 @@
       rs.cam.x = U.lerp(rs.cam.x, rs.player.x, 0.2);
       rs.cam.y = U.lerp(rs.cam.y, rs.player.y, 0.2);
 
-      // A local clock for sprite bob/animation and float/particle decay.
-      rs.time += 1 / 30;
-      rs.shake = Math.max(0, rs.shake - (1 / 30) * 14);
+      // A local clock for sprite bob/animation, and decay of the juice arrays that
+      // Game.applyEvents fills — solo does this inside Game.update, but online no
+      // world sim runs, so without it floaties and blood would accumulate forever.
+      const dt = 1 / 30;
+      rs.time += dt;
+      rs.shake = Math.max(0, rs.shake - dt * 14);
+      for (const ft of rs.floatTexts) ft.t += dt;
+      rs.floatTexts = rs.floatTexts.filter((ft) => ft.t < 0.9);
+      for (const pt of rs.particles) {
+        pt.t += dt;
+        pt.x += pt.vx * dt;
+        pt.y += pt.vy * dt;
+        pt.vx *= 1 - 3 * dt;
+        pt.vy *= 1 - 3 * dt;
+      }
+      rs.particles = rs.particles.filter((pt) => pt.t < pt.life);
+      for (const msg of rs.messages) msg.t += dt;
+      rs.messages = rs.messages.filter((msg) => msg.t < 7);
       return rs;
     };
 

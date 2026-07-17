@@ -170,6 +170,11 @@ test('sendInput numbers frames and tracks them until the server acks', () => {
   net.onServerMessage(snap(10, { ack: 3 }));
   assert.equal(net.lastAckedSeq, 3);
   assert.equal(net.unackedCount, 1, 'acked frames dropped; only seq 4 remains in flight');
+
+  // Pure-UI edges the server doesn't know must be filtered out, or it would kick us.
+  sock.sent.length = 0;
+  net.sendInput(freshInput({ keys: { d: true }, pressed: ['dodge', 'inv', 'tree', 'esc', 'mute', 'interact'] }), 2200);
+  assert.deepEqual(sock.sent[0].pressed.sort(), ['dodge', 'interact'], 'only server-known edges are sent');
 });
 
 test('reconcileLocal rebases on the server then replays in-flight inputs', () => {
@@ -235,6 +240,8 @@ test('takeEvents yields each snapshot\'s juice exactly once', () => {
 
 globalThis.Render = require('../js/render.js');
 const Render = globalThis.Render;
+globalThis.UI = require('../js/ui.js');
+const UI = globalThis.UI;
 
 function makeCtx() {
   const gradient = { addColorStop() {} };
@@ -318,4 +325,46 @@ test('Net.buildRenderState yields a sim-shaped object Render.draw can consume', 
   assert.ok(Number.isFinite(netState.cam.x) && Number.isFinite(netState.cam.y), 'camera is finite');
   assert.ok(netState.flow && netState.flow.field, 'fog field computed from the local hero so isVisible works');
   assert.doesNotThrow(() => Render.draw(makeCtx(), netState, { w: 800, h: 600 }), 'the assembled state renders');
+});
+
+test('buildRenderState decays applied juice so it never accumulates online', () => {
+  const { net, clock } = connectedNet();
+  clock.t = 1000;
+  net.onServerMessage(snap(1, { you: 'p0', players: [{ id: 'p0', x: 400, y: 300, facing: 0, hp: 100, maxHP: 100, dead: false, dodgeT: 0, hurtT: 0 }] }));
+  const rs = net.freshRenderState();
+  // A short-lived floatie and a nearly-expired particle.
+  rs.floatTexts.push({ x: 0, y: 0, text: '5', color: '#fff', size: 14, t: 0.89 });
+  rs.particles.push({ x: 0, y: 0, vx: 0, vy: 0, t: 0.34, life: 0.35, color: '#fff', size: 2 });
+  net.buildRenderState(rs, 1000);
+  assert.equal(rs.floatTexts.length, 0, 'the expired floatie was culled');
+  assert.equal(rs.particles.length, 0, 'the dead particle was culled');
+});
+
+test('the full online draw path (Render.draw + UI.draw) runs on a render-state', () => {
+  const { net, clock } = connectedNet();
+  clock.t = 1000;
+  net.onServerMessage(
+    snap(1, {
+      you: 'p0',
+      self: { mana: 20, maxMana: 40, healPool: 0, xp: 5, level: 1, skillCd: { whirlwind: 0, nova: 0, prayer: 0 }, gold: 12, kills: 3 },
+      players: [
+        { id: 'p0', x: 400, y: 300, facing: 0, hp: 90, maxHP: 100, level: 1, dead: false, dodgeT: 0, hurtT: 0 },
+        { id: 'p1', x: 440, y: 300, facing: 3, hp: 70, maxHP: 100, level: 1, dead: false, dodgeT: 0, hurtT: 0 },
+      ],
+      monsters: [{ id: 9, type: 'bat', name: 'Bat', x: 470, y: 300, hp: 5, maxHP: 10, facing: 0, r: 8 }],
+    })
+  );
+  const rs = net.freshRenderState({ name: 'Ash', shirt: '#4a5578' });
+  net.reconcileLocal(rs, 1000);
+  net.buildRenderState(rs, 1000);
+  const ctx = makeCtx();
+  const view = { w: 1280, h: 800 };
+  assert.doesNotThrow(() => {
+    Render.draw(ctx, rs, view);
+    UI.draw(ctx, rs, view);
+  }, 'the HUD renders on the online render-state without missing a field');
+  // The self block reached the HUD-facing fields.
+  assert.equal(rs.player.mana, 20);
+  assert.equal(rs.bag.gold, 12);
+  assert.equal(rs.kills, 3);
 });
