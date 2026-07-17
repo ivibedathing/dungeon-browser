@@ -60,12 +60,15 @@
       seed: null,
       code: null,
       tickHz: 30,
+      self: null, // the local player's private HUD state, from each snapshot's `self`
       status: 'idle', // idle | connecting | open | error | closed
       error: null,
       latencyMs: 0, // artificial one-way delay for LAN-RTT testing; 0 in production
 
+      onOpen: null, // caller hook fired once the socket is connected
       _now: now,
       _ws: opts.socket || null,
+      _outbox: [], // frames queued while the socket is still connecting
       _snaps: [], // buffered snapshots, ascending by receive time _rt
       _seq: 0,
       _unacked: [], // {seq, input} still in flight
@@ -105,6 +108,14 @@
         }
         net._deliver(msg);
       };
+      net._ws.onopen = () => {
+        // Flush anything queued before the socket finished connecting (the join
+        // almost always lands here), then hand control to the caller.
+        const q = net._outbox;
+        net._outbox = [];
+        for (const text of q) net._rawSend(text);
+        if (net.onOpen) net.onOpen();
+      };
       net._ws.onclose = () => {
         if (net.status !== 'error') net.status = 'closed';
       };
@@ -140,6 +151,7 @@
           net.status = 'open';
           break;
         case 'snapshot':
+          if (msg.self) net.self = msg.self; // latest wins; HUD reads the freshest
           net._ingest(msg);
           break;
         case 'error':
@@ -200,11 +212,24 @@
 
     net._send = function (obj) {
       const ws = net._ws;
-      if (!ws || ws.readyState !== (ws.OPEN != null ? ws.OPEN : 1)) return;
+      if (!ws) return;
       const text = JSON.stringify(obj);
+      const OPEN = ws.OPEN != null ? ws.OPEN : 1;
+      const CONNECTING = ws.CONNECTING != null ? ws.CONNECTING : 0;
+      if (ws.readyState === CONNECTING) {
+        net._outbox.push(text); // queued; onopen flushes it
+        return;
+      }
+      if (ws.readyState !== OPEN) return;
+      net._rawSend(text);
+    };
+
+    net._rawSend = function (text) {
+      const ws = net._ws;
+      const OPEN = ws.OPEN != null ? ws.OPEN : 1;
       if (net.latencyMs > 0 && typeof setTimeout !== 'undefined') {
         setTimeout(() => {
-          if (ws.readyState === (ws.OPEN != null ? ws.OPEN : 1)) ws.send(text);
+          if (ws && ws.readyState === OPEN) ws.send(text);
         }, net.latencyMs);
       } else {
         ws.send(text);
@@ -269,6 +294,10 @@
       if (!newest) return;
       const base = newest.players.find((pl) => pl.id === net.you);
       if (!base) return;
+
+      // Replaying inputs needs the floor grid for collision; ensure it here so
+      // reconcile works on the very first frame, before buildRenderState has run.
+      ensureFloor(predState, newest.floor);
 
       const p = predState.player;
       p.x = base.x;
@@ -335,6 +364,9 @@
         particles: [],
         floatTexts: [],
         messages: [],
+        // Bag is shared run state in Phase 2; only gold and belt slots feed the HUD.
+        bag: { gold: 0, belt: [null, null, null, null], slots: [], potions: { health: [], mana: [] } },
+        kills: 0,
         shake: 0,
         dead: false,
         floor: 0,
@@ -382,6 +414,19 @@
       rs.monsters = interp.monsters;
       rs.projectiles = interp.projectiles;
       rs.groundItems = interp.groundItems;
+
+      // Fold the server's authoritative private state into the local hero + HUD.
+      // (Position/hp came from reconcileLocal; these are the fields not in the
+      // entity lists.) maxHP/maxMana aren't sent — effectiveStats already matches.
+      if (net.self) {
+        rs.player.mana = net.self.mana;
+        rs.player.healPool = net.self.healPool;
+        rs.player.xp = net.self.xp;
+        rs.player.level = net.self.level;
+        if (net.self.skillCd) rs.player.skillCd = net.self.skillCd;
+        rs.bag.gold = net.self.gold;
+        rs.kills = net.self.kills;
+      }
 
       // Splice the predicted local hero over its interpolated twin: everyone else
       // renders from interpolation (smooth), the local hero from prediction (immediate).

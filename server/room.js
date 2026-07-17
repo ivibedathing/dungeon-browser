@@ -172,14 +172,31 @@ class Room {
     const me = this.state.players.find((pl) => pl.id === id);
     if (!me) return null;
     const s = this.state;
+    const myStats = Entities.effectiveStats(me);
     return {
       t: 'snapshot',
       tick: this.tick_,
       you: id,
       ack: this.ack(id),
       floor: s.floor,
+      // The requesting player's own private state — the fields the HUD reads that
+      // aren't in the shared entity lists and that the client can't derive (its
+      // predicted maxHP/maxMana already match, since its render hero is a starter
+      // like the server's). Bag gold and kills are shared run state in Phase 2;
+      // per-player loot is Phase 4.
+      self: {
+        mana: round2(me.mana || 0),
+        maxMana: Math.round(myStats.maxMana),
+        healPool: round2(me.healPool || 0),
+        xp: me.xp,
+        level: me.level,
+        skillCd: { whirlwind: round3(me.skillCd.whirlwind), nova: round3(me.skillCd.nova), prayer: round3(me.skillCd.prayer) },
+        gold: s.bag.gold,
+        kills: s.kills,
+      },
       // Party members are never AOI-culled: the HUD and (Phase 4) the minimap
-      // need every ally every tick, and there are at most three of them.
+      // need every ally every tick, and there are at most three of them. The swing
+      // carries exactly the fields R.drawPlayer reads to sweep an arc.
       players: s.players.map((pl) => ({
         id: pl.id,
         name: pl.name,
@@ -191,8 +208,10 @@ class Room {
         maxHP: Math.round(Entities.effectiveStats(pl).maxHP),
         level: pl.level,
         dead: !!pl.dead,
-        swing: pl.swing ? { t: round3(pl.swing.t), dur: round3(pl.swing.dur), a: round3(pl.swing.a) } : null,
-        dodging: pl.dodgeT > 0,
+        swing: pl.swing
+          ? { t: round3(pl.swing.t), dur: round3(pl.swing.dur), facing: round3(pl.swing.facing), radius: pl.swing.radius, arc: round3(pl.swing.arc), ranged: !!pl.swing.ranged }
+          : null,
+        dodgeT: round3(pl.dodgeT),
         hurtT: round3(pl.hurtT),
       })),
       monsters: s.monsters

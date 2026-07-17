@@ -174,6 +174,14 @@ test('snapshots are per-player and filtered to the area of interest', () => {
   // Projectiles carry `angle` (the field the renderer rotates arrows by), not `a`.
   assert.equal(snap.projectiles[0].angle, 1.25, 'projectile angle rides the wire under the name the renderer reads');
 
+  // The requesting player's private HUD state rides in `self`.
+  assert.ok(snap.self, 'snapshot carries a self block');
+  assert.equal(typeof snap.self.mana, 'number', 'mana for the mana orb');
+  assert.equal(typeof snap.self.maxMana, 'number');
+  assert.equal(snap.self.gold, room.state.bag.gold, 'gold for the belt HUD');
+  assert.equal(snap.self.kills, room.state.kills);
+  assert.ok(snap.self.skillCd && 'whirlwind' in snap.self.skillCd, 'skill cooldowns for the HUD veils');
+
   // The wire carries a projection, not the live objects.
   assert.equal(snap.monsters[0].hp, 10);
   assert.ok(!('aggroed' in snap.monsters[0]), 'server-only AI fields stay server-side');
