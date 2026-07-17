@@ -85,7 +85,10 @@ function createServer(opts = {}) {
     peer.id = seat.id;
     peer.room = room;
     ws._room = room; // for the broadcast sweep
-    send(ws, { t: 'welcome', v: Protocol.PROTOCOL_VERSION, code: room.code, you: seat.id, tickHz });
+    // `seed` lets the client regenerate each floor's grid deterministically
+    // (Dungeon.generateDungeon(seed, floor)) instead of us re-sending the map
+    // every tick — snapshots carry only the moving contents plus `floor`.
+    send(ws, { t: 'welcome', v: Protocol.PROTOCOL_VERSION, code: room.code, seed: room.seed, you: seat.id, tickHz });
   }
 
   function handleInput(ws, msg) {

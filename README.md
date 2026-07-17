@@ -13,6 +13,18 @@ python3 -m http.server 8321
 
 Progress is saved automatically (localStorage) — close the tab and pick up where you left off. Death wipes the save; only your best-run record survives.
 
+## Multiplayer (in progress)
+
+A co-op server lives under `server/` (the only part of the project with an npm dependency, `ws`). It runs the same simulation the browser does, one instance per room, and is entirely optional — solo play needs nothing but the files above.
+
+```sh
+npm install        # one-time: fetches ws
+npm start          # ws://0.0.0.0:8080 by default (PORT to override)
+npm test           # node --test over the whole suite, server included
+```
+
+The client isn't wired to it yet (that's the next phase); today the server is exercised by the test suite. Note that the hosted claude.ai artifact build is **offline-only** — its content-security policy blocks outbound sockets, so online play requires running the game from these files against your own server.
+
 ## Controls
 
 | Key | Action |

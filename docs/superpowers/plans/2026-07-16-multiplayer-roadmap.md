@@ -13,13 +13,20 @@ multi-source flow field + nearest-player AI, `Game.stepFixed` 30 Hz stepper,
 seeded sim RNG (`state.srand`) with a same-seed-same-outcome replay test.
 Exit met: 112/112 tests (7 new), solo verified in-browser, six TDD commits.
 
-## Phase 1 — Server skeleton & protocol (~1–2 sessions)
+## Phase 1 — Server skeleton & protocol ✅ *(landed 2026-07-17, branch `phase1-server-protocol` merged to `main`)*
 
-- `server/server.js` — ws listener, room registry, join codes, 30 Hz loop per room calling `Game.stepFixed`.
-- `server/protocol.js` — message schemas (hand-rolled validators, no dep), rate limits, seq numbers.
-- `server/room.js` — player join/leave, input buffering, snapshot/event broadcast with AOI filter.
-- `package.json` arrives (server-only deps: `ws`).
-- Tests: real server on loopback; two scripted ws clients join a room, move, one attacks a monster, both receive consistent snapshots; malformed/flood messages get kicked. Exit: two node test clients co-exist in one room.
+- `server/protocol.js` — hand-rolled validators (no dep), a pre-parse size cap, seq numbers, and a token-bucket rate limiter sized to pass 30 Hz input but drain under a flood. Rejects (never coerces) anything the sim acts on; clamps cosmetics like names. `restart` deliberately not an accepted edge — it rebuilds the run from players[0] alone, which would delete a shared room (Phase 4 owns co-op death/run-end).
+- `server/room.js` — one sim state per room, its sole mutator: seat management (max 4, monotonic ids so a leaver's slot never aliases a joiner), input buffering (held keys persist, edges accumulate and fire once, stale/duplicate seq dropped), `tick(nowMs)` drives `Game.stepFixed` then drains events, and outbound snapshots/events are per-player projections filtered to an AOI radius — never live sim objects.
+- `server/server.js` — `WebSocketServer`, room registry, confusable-free join codes (room seed derived from the code), one heartbeat interval ticking every room and fanning out AOI snapshots, ping/pong liveness, kick-on-abuse. `server/sim.js` bootstraps the browser sim into node.
+- `package.json` + `ws` arrived; client untouched (still zero-build, plain script tags). README gained a Multiplayer section restating the offline-only artifact constraint.
+- Exit met: 191/191 tests (24 new — 7 protocol, 11 room, 6 loopback integration). Two scripted ws clients co-exist in one room, move independently, one kills a monster both observe consistently; malformed/flood senders get kicked without harming the room; empty rooms are reaped. Four TDD commits.
+
+### Notes for Phase 2 (client netplay)
+
+- `welcome` carries `{v, code, seed, you, tickHz}`; `snapshot` carries `{tick, you, ack, floor, players[], monsters[], projectiles[], groundItems[], events[]}`. `ack` is the newest input seq the server has processed for that client — reconciliation reads it.
+- The server accepts only `join`/`input`/`ping`; the client must send held keys every tick and edges as a `pressed[]` list (they fire once server-side). Menu/UI edges (`inv`, `tree`, `esc`, `mute`) stay client-side and are not in `Protocol.EDGES`.
+- Snapshots omit the dungeon grid: the client regenerates each floor with `Dungeon.generateDungeon(welcome.seed, snapshot.floor)` (a server test pins that this reproduces the room's grid). Server-only AI fields are stripped too. AOI radius is 900 world units; party members are never culled.
+- Positions are rounded to 2 dp, angles to 3 — the client should interpolate, not treat them as exact.
 
 ## Phase 2 — Client netplay (~2 sessions)
 

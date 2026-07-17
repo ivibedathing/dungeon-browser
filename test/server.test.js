@@ -95,6 +95,14 @@ test('two clients share a room by code, move independently, and both see the wor
   assert.match(code, /^[A-Z0-9]{4,6}$/, 'welcome carries a join code');
   assert.equal(host.welcome.you, 'p0', 'host is p0');
 
+  // The seed in the welcome must reproduce the server room's floor 1 grid, so a
+  // Phase 2 client can regenerate the map instead of receiving it every tick.
+  assert.equal(typeof host.welcome.seed, 'number', 'welcome carries the room seed');
+  const mine = Dungeon.generateDungeon(host.welcome.seed, 1);
+  const theirs = srv.rooms.get(code).state.dungeon;
+  assert.equal(mine.width, theirs.width);
+  assert.deepEqual(mine.stairs, theirs.stairs, 'client-regenerated grid matches the server floor');
+
   const guest = new Client(url);
   await guest.open();
   guest.join('Bo', code);
