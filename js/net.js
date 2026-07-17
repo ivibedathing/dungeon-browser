@@ -16,6 +16,8 @@
   const U = typeof window !== 'undefined' ? window.U : require('./util.js');
   const Game = typeof window !== 'undefined' ? window.Game : require('./game.js');
   const Entities = typeof window !== 'undefined' ? window.Entities : require('./entities.js');
+  const Dungeon = typeof window !== 'undefined' ? window.Dungeon : require('./dungeon.js');
+  const TS = Dungeon.TILE_SIZE;
 
   // Render this far behind the newest snapshot so there are almost always two
   // snapshots bracketing the render time to interpolate between. One tick of slack
@@ -285,6 +287,118 @@
 
     net.newestSnapshot = function () {
       return net._snaps.length ? net._snaps[net._snaps.length - 1] : null;
+    };
+
+    // ---- Juice (events) ----
+
+    // Return every event from snapshots newer than the last drain, once. The caller
+    // feeds these to Game.applyEvents so blood, damage numbers, and sounds fire on
+    // the client exactly as they do in solo — the sim was made event-driven in
+    // Phase 0 precisely so they could cross the wire.
+    net._lastEventTick = -1;
+    net.takeEvents = function () {
+      const out = [];
+      for (const s of net._snaps) {
+        if (s.tick > net._lastEventTick && s.events && s.events.length) out.push(...s.events);
+      }
+      net._lastEventTick = net.latestTick;
+      return out;
+    };
+
+    // ---- Render-state assembly ----
+
+    // The persistent client-side render state: a sim-shaped object the renderer and
+    // HUD read, holding a predicted local hero and the juice arrays. Created once on
+    // entering online play; buildRenderState refreshes its moving contents each frame.
+    net.freshRenderState = function (opts) {
+      const player = Entities.newPlayer(opts);
+      player.id = net.you || 'p0';
+      player.dead = false;
+      player.facing = 0;
+      player.attackT = 0;
+      player.swing = null;
+      player.hurtT = 0;
+      player.healPool = 0;
+      player.healRate = 0;
+      player.skillCd = { whirlwind: 0, nova: 0, prayer: 0 };
+      player.dodgeT = 0;
+      player.dodgeCdT = 0;
+      player.dodgeDir = { x: 1, y: 0 };
+      return {
+        online: true,
+        player,
+        players: [player],
+        monsters: [],
+        projectiles: [],
+        groundItems: [],
+        portals: [], // town portals are a Phase 4 co-op concern; empty keeps the renderer happy
+        particles: [],
+        floatTexts: [],
+        messages: [],
+        shake: 0,
+        dead: false,
+        floor: 0,
+        dungeon: null,
+        explored: null,
+        flow: { field: null, t: 0 },
+        cam: null,
+        time: 0,
+      };
+    };
+
+    function ensureFloor(rs, floor) {
+      if (rs.dungeon && rs.floor === floor) return;
+      rs.floor = floor;
+      rs.dungeon = Dungeon.generateDungeon(net.seed, floor);
+      rs.explored = Array.from({ length: rs.dungeon.height }, () => new Array(rs.dungeon.width).fill(false));
+      rs.flow = { field: null, t: 0 };
+    }
+
+    // Recompute the fog field from the local hero only (single-source): the veil,
+    // vignette, and R.isVisible all read rs.flow.field, and co-op fog is "what I can
+    // see", so one source is correct here.
+    function refreshFog(rs) {
+      const grid = rs.dungeon.grid;
+      rs.flow.field = Dungeon.flowFieldMulti(grid, [{ x: Math.floor(rs.player.x / TS), y: Math.floor(rs.player.y / TS) }], 30);
+      const f = rs.flow.field;
+      for (let y = 0; y < rs.dungeon.height; y++) {
+        for (let x = 0; x < rs.dungeon.width; x++) {
+          if (f[y][x] <= 9) {
+            rs.explored[y][x] = true;
+            for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+              const ny = y + dy;
+              const nx = x + dx;
+              if (rs.explored[ny] !== undefined && rs.explored[ny][nx] !== undefined) rs.explored[ny][nx] = true;
+            }
+          }
+        }
+      }
+    }
+
+    net.buildRenderState = function (rs, nowMs) {
+      const interp = net.interpolatedAt(nowMs);
+      ensureFloor(rs, interp.floor);
+
+      rs.monsters = interp.monsters;
+      rs.projectiles = interp.projectiles;
+      rs.groundItems = interp.groundItems;
+
+      // Splice the predicted local hero over its interpolated twin: everyone else
+      // renders from interpolation (smooth), the local hero from prediction (immediate).
+      const others = interp.players.filter((pl) => pl.id !== net.you);
+      rs.players = [rs.player, ...others];
+
+      refreshFog(rs);
+
+      // Camera eases toward the local hero, same feel as the solo updateWorld.
+      if (!rs.cam) rs.cam = { x: rs.player.x, y: rs.player.y };
+      rs.cam.x = U.lerp(rs.cam.x, rs.player.x, 0.2);
+      rs.cam.y = U.lerp(rs.cam.y, rs.player.y, 0.2);
+
+      // A local clock for sprite bob/animation and float/particle decay.
+      rs.time += 1 / 30;
+      rs.shake = Math.max(0, rs.shake - (1 / 30) * 14);
+      return rs;
     };
 
     return net;

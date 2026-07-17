@@ -7,7 +7,8 @@ globalThis.Skills = require('../js/skills.js');
 globalThis.Entities = require('../js/entities.js');
 globalThis.Dungeon = require('../js/dungeon.js');
 globalThis.Quests = require('../js/quests.js');
-const Game = require('../js/game.js');
+globalThis.Game = require('../js/game.js');
+const Game = globalThis.Game;
 
 function freshInput(over = {}) {
   return {
@@ -217,4 +218,104 @@ test('a stale snapshot never rewinds the acked seq or the buffer', () => {
   net.onServerMessage(snap(19, { ack: 2 })); // arrives late, lower tick
   assert.equal(net.lastAckedSeq, 5, 'ack only moves forward');
   assert.equal(net.latestTick, 20, 'the newest tick is retained despite the reorder');
+});
+
+test('takeEvents yields each snapshot\'s juice exactly once', () => {
+  const { net } = connectedNet();
+  net.onServerMessage(snap(1, { events: [{ type: 'message', text: 'hi' }] }));
+  net.onServerMessage(snap(2, { events: [{ type: 'sfx', name: 'kill' }] }));
+  const first = net.takeEvents();
+  assert.equal(first.length, 2, 'both fresh snapshots\' events drained');
+  assert.equal(net.takeEvents().length, 0, 'nothing re-delivered');
+  net.onServerMessage(snap(3, { events: [{ type: 'float', x: 0, y: 0, text: '5' }] }));
+  assert.equal(net.takeEvents().length, 1, 'only the new snapshot\'s events');
+});
+
+// ---- Task 3: render all players + remote render-state ----
+
+globalThis.Render = require('../js/render.js');
+const Render = globalThis.Render;
+
+function makeCtx() {
+  const gradient = { addColorStop() {} };
+  const target = {};
+  return new Proxy(target, {
+    get(t, prop) {
+      if (prop === 'measureText') return (s) => ({ width: String(s).length * 6 });
+      if (prop === 'createLinearGradient' || prop === 'createRadialGradient') return () => gradient;
+      if (typeof t[prop] !== 'undefined') return t[prop];
+      const fn = () => {};
+      t[prop] = fn;
+      return fn;
+    },
+    set(t, prop, v) {
+      t[prop] = v;
+      return true;
+    },
+  });
+}
+
+test('Render.draw draws every living party member, skipping the dead', () => {
+  const state = Game.newRun(210);
+  state.monsters.length = 0;
+  const p0 = state.player;
+  // A lean ally, snapshot-shaped (no equip), beside the host, plus a dead one.
+  const ally = { id: 'p1', name: 'Bo', shirt: '#7a5578', x: p0.x + 30, y: p0.y, facing: 0, hp: 80, maxHP: 100, level: 1, dead: false, swing: null, dodgeT: 0, hurtT: 0, equip: {} };
+  const ghost = { ...ally, id: 'p2', x: p0.x - 30, dead: true };
+  state.players.push(ally, ghost);
+
+  const R = Render._;
+  const drawn = [];
+  const orig = R.drawPlayer;
+  R.drawPlayer = (ctx, st, pl) => drawn.push((pl || st.player).id);
+  try {
+    Render.draw(makeCtx(), state, { w: 800, h: 600 });
+  } finally {
+    R.drawPlayer = orig;
+  }
+  assert.ok(drawn.includes('p0'), 'the local hero drew');
+  assert.ok(drawn.includes('p1'), 'the living ally drew');
+  assert.ok(!drawn.includes('p2'), 'the dead ally was not drawn');
+});
+
+test('drawing a lean ally (no equipment) does not crash', () => {
+  const state = Game.newRun(211);
+  state.monsters.length = 0;
+  const ally = { id: 'p1', name: 'Bo', shirt: '#7a5578', x: state.player.x + 24, y: state.player.y, facing: 1, hp: 50, maxHP: 100, level: 2, dead: false, swing: { t: 0.02, dur: 0.2, facing: 1, arc: 2, radius: 60, ranged: false }, dodgeT: 0, hurtT: 0.1, equip: {} };
+  state.players.push(ally);
+  assert.doesNotThrow(() => Render.draw(makeCtx(), state, { w: 800, h: 600 }));
+});
+
+test('Net.buildRenderState yields a sim-shaped object Render.draw can consume', () => {
+  const { net, clock } = connectedNet();
+  const you = 'p0';
+  clock.t = 1000;
+  net.onServerMessage(
+    snap(1, {
+      you,
+      floor: 1,
+      players: [
+        { id: 'p0', x: 400, y: 300, facing: 0, hp: 100, maxHP: 100, dead: false, dodgeT: 0, hurtT: 0 },
+        { id: 'p1', x: 460, y: 300, facing: 3, hp: 90, maxHP: 100, dead: false, dodgeT: 0, hurtT: 0 },
+      ],
+      monsters: [{ id: 5, type: 'bat', name: 'Bat', x: 500, y: 300, hp: 8, maxHP: 10, facing: 0, r: 8 }],
+    })
+  );
+
+  // The persistent client render-state, seeded with a predicted local hero.
+  const netState = net.freshRenderState();
+  netState.player.x = 402; // prediction has nudged the local hero a hair past the server base
+  netState.player.y = 300;
+
+  net.buildRenderState(netState, 1000);
+
+  assert.ok(netState.dungeon && netState.dungeon.grid, 'grid regenerated from the room seed');
+  assert.equal(netState.floor, 1);
+  assert.equal(netState.player, netState.players.find((pl) => pl.id === 'p0'), 'local slot is the predicted hero, spliced over interpolation');
+  assert.equal(netState.player.x, 402, 'the predicted local position is kept, not the interpolated one');
+  assert.ok(netState.players.some((pl) => pl.id === 'p1'), 'the ally is present from interpolation');
+  assert.equal(netState.monsters.length, 1, 'remote monster carried in');
+  assert.ok(Number.isFinite(netState.cam.x) && Number.isFinite(netState.cam.y), 'camera is finite');
+  assert.ok(netState.flow && netState.flow.field, 'fog field computed from the local hero so isVisible works');
+  assert.doesNotThrow(() => Render.draw(makeCtx(), netState, { w: 800, h: 600 }), 'the assembled state renders');
 });

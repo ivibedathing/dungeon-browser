@@ -159,6 +159,7 @@ test('snapshots are per-player and filtered to the area of interest', () => {
     { id: 9100, kind: 'gold', amount: 5, x: p.x + 20, y: p.y },
     { id: 9101, kind: 'gold', amount: 5, x: p.x + Room.AOI_RADIUS + 400, y: p.y }
   );
+  room.state.projectiles.push({ id: 9200, kind: 'arrow', x: p.x + 30, y: p.y, angle: 1.25 });
 
   const snap = room.snapshotFor(a.id);
   assert.equal(snap.t, 'snapshot');
@@ -170,6 +171,8 @@ test('snapshots are per-player and filtered to the area of interest', () => {
   assert.deepEqual(ids, [9001], 'only the in-range monster is sent');
   assert.deepEqual(snap.groundItems.map((g) => g.id), [9100], 'distant loot withheld');
   assert.equal(snap.players.length, 2, 'party members are always sent — the HUD needs them');
+  // Projectiles carry `angle` (the field the renderer rotates arrows by), not `a`.
+  assert.equal(snap.projectiles[0].angle, 1.25, 'projectile angle rides the wire under the name the renderer reads');
 
   // The wire carries a projection, not the live objects.
   assert.equal(snap.monsters[0].hp, 10);

@@ -213,7 +213,7 @@ class Room {
         })),
       projectiles: s.projectiles
         .filter((pr) => this.inAOI(me, pr.x, pr.y))
-        .map((pr) => ({ id: pr.id, x: round2(pr.x), y: round2(pr.y), kind: pr.kind, a: round3(pr.a || 0) })),
+        .map((pr) => ({ id: pr.id, x: round2(pr.x), y: round2(pr.y), kind: pr.kind, angle: round3(pr.angle || 0) })),
       groundItems: s.groundItems
         .filter((g) => this.inAOI(me, g.x, g.y))
         .map((g) => ({ id: g.id, kind: g.kind, x: round2(g.x), y: round2(g.y), amount: g.amount, item: g.item || null })),

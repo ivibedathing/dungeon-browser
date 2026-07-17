@@ -4,8 +4,12 @@
   const Render = typeof window !== 'undefined' ? window.Render : require('./core.js');
   const R = Render._;
 
-  R.drawPlayer = function drawPlayer(ctx, state) {
-    const p = state.player;
+  // Draws one hero. `p` defaults to the local player (solo/prediction), but any
+  // party member from a snapshot can be passed — allies arrive without an `equip`
+  // map, so every gear block below is guarded and a lean ally renders as the base
+  // cloaked body in its own shirt colour.
+  R.drawPlayer = function drawPlayer(ctx, state, p) {
+    if (!p) p = state.player;
     const t = state.time;
     const bob = Math.sin(t * 8) * 1.2;
 
@@ -62,8 +66,10 @@
 
     const by = p.y + bob * 0.3;
 
-    // Held weapon, styled by kind (sword sweeps, bow aims, wand glows).
-    const weaponItem = p.equip.weapon;
+    // Held weapon, styled by kind (sword sweeps, bow aims, wand glows). Allies from
+    // a snapshot carry no equipment, so default the whole map to empty.
+    const eq = p.equip || {};
+    const weaponItem = eq.weapon;
     const wkind = (weaponItem && weaponItem.kind) || 'melee';
     const heldArc = p.swing && p.swing.arc && !p.swing.ranged ? p.swing.arc : Game.ARC_WIDTH;
     const swordAngle = p.swing
@@ -113,7 +119,6 @@
     ctx.restore();
 
     // Equipped pieces re-dress the sprite; magic+ pieces take on their rarity tint.
-    const eq = p.equip;
     const piece = (item, base) => (item && item.rarity !== 'common' ? R.mix(base, item.color, 0.45) : base);
 
     // Boots: feet poking out under the cloak.
