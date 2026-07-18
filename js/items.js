@@ -283,7 +283,7 @@
       const item = equip && equip[key];
       if (!item) continue;
       if (key !== 'weapon') {
-        s.defense += item.stats.defense || 0;
+        s.defense += Items.armorDefense(item);
         s.maxHP += item.stats.maxHP || 0;
         s.maxMana += item.stats.maxMana || 0;
         speedAdd += item.stats.speedMult || 0;
@@ -301,23 +301,41 @@
         else if (a.key === 'moveMult') moveAdd += a.val;
       }
     }
+    s.defense = Math.round(s.defense);
     s.speed = baseSpeed * (1 + speedAdd);
     s.xpMult = 1 + xpAdd;
     s.moveMult = 1 + moveAdd;
     return s;
   };
 
-  // ---- Weapon upgrade levels (the Blacksmith's trade) ----
+  // ---- Upgrade levels (the Blacksmith's trade) ----
 
   Items.MAX_PLUS = Balance.upgrade.maxPlus;
   Items.PLUS_DMG = Balance.upgrade.dmgPerPlus;
+  Items.PLUS_DEF = Balance.upgrade.defPerPlus;
+
+  // Borin works metal, not gemcraft: every worn slot but the ring takes a +N.
+  Items.SMITHABLE_SLOTS = Items.EQUIP_SLOTS.filter((s) => s !== 'ring');
+  Items.isSmithable = (item) => !!item && Items.SMITHABLE_SLOTS.includes(item.slot);
 
   Items.weaponDamage = (item) => Math.round(item.stats.damage * (1 + Items.PLUS_DMG * (item.plus || 0)));
 
+  // The armour counterpart of weaponDamage: +N scales defense and nothing else,
+  // so a honed piece never inflates its Life/Mana/move rolls.
+  //
+  // Deliberately NOT rounded, unlike weaponDamage. Base defense rolls are 1–9,
+  // so rounding each piece on its own would swallow most levels whole (a def-1
+  // boot would sit at 1 until +7). aggregateStats sums the exact values and
+  // rounds once, so every level pays out across a full set.
+  Items.armorDefense = (item) => (item.stats.defense || 0) * (1 + Items.PLUS_DEF * (item.plus || 0));
+
+  // Tooltip-friendly form: one decimal, and only when honing made it fractional.
+  Items.formatDefense = (v) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
+
   Items.displayName = (item) => (item.plus ? `+${item.plus} ${item.name}` : item.name);
 
-  Items.upgradeWeapon = function (item) {
-    if (!item || item.slot !== 'weapon') return false;
+  Items.upgradeItem = function (item) {
+    if (!Items.isSmithable(item)) return false;
     if ((item.plus || 0) >= Items.MAX_PLUS) return false;
     item.plus = (item.plus || 0) + 1;
     return true;
