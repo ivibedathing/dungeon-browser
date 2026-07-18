@@ -194,6 +194,13 @@
       net._send({ t: 'deleteChar', slot });
     };
 
+    // Progression intents (Phase 4.5): the client sends indices/ids only; the server
+    // applies against its own tables and the next snapshot corrects any local mis-apply.
+    net.lastReject = null;
+    net.sendIntent = function (intent, fields) {
+      net._send(Object.assign({ t: 'intent', intent }, fields || {}));
+    };
+
     // Receive path with the artificial-latency switch. Real arrivals are delayed by
     // latencyMs so a test / the RTT demo sees the same lag both directions.
     net._deliver = function (msg) {
@@ -217,6 +224,11 @@
         case 'snapshot':
           if (msg.self) net.self = msg.self; // latest wins; HUD reads the freshest
           net._ingest(msg);
+          break;
+        case 'reject':
+          // The server refused an intent; the next snapshot restores the truth. Stash
+          // it so the HUD can explain the item flickering back.
+          net.lastReject = { intent: msg.intent, reason: msg.reason };
           break;
         case 'error':
           net.status = 'error';

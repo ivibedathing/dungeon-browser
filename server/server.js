@@ -13,6 +13,7 @@ const { WebSocketServer } = require('ws');
 const Protocol = require('./protocol.js');
 const { Room } = require('./room.js');
 const Character = require('./character.js');
+const Intents = require('./intents.js');
 const { createStore } = require('./store.js');
 
 // Join codes are drawn from a confusable-free alphabet (see protocol) so a code
@@ -198,6 +199,19 @@ function createServer(opts = {}) {
     peer.room.setInput(peer.id, msg);
   }
 
+  // Progression intents are applied against the SERVER's copy of the acting player's
+  // bag/equip/skills (Intents.apply), recomputing stats from server tables. A rejected
+  // intent gets a `reject` frame so the client's optimistic prediction can be corrected.
+  function handleIntent(ws, msg) {
+    const peer = ws._peer;
+    if (!peer.room) return kick(ws, Protocol.ERR.NOT_JOINED);
+    const player = peer.room.state.players.find((p) => p.id === peer.id);
+    if (!player) return;
+    const res = Intents.apply(peer.room.state, player, msg);
+    if (!res.ok) send(ws, { t: 'reject', intent: msg.intent, reason: res.reason });
+    else if (peer.accountId != null) saveForPlayer(peer.room, peer.id, 'intent'); // persist gear/gold/skill changes
+  }
+
   // ---- Save triggers (fire-and-forget; never awaited on the tick path) ----
 
   function peerFor(room, playerId) {
@@ -260,6 +274,7 @@ function createServer(opts = {}) {
       // funnel through one catch so a store error kicks rather than crashes the room.
       if (msg.t === 'input') return handleInput(ws, msg);
       if (msg.t === 'join') return handleJoin(ws, msg);
+      if (msg.t === 'intent') return handleIntent(ws, msg);
       if (msg.t === 'ping') return send(ws, { t: 'pong', ts: msg.ts });
 
       const async =
