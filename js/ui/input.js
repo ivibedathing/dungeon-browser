@@ -50,6 +50,10 @@
           Game.useWaystone(state, target);
           state.mapOpen = false;
         }
+        // One click is one journey: the 9px hit radius covers ~37 world tiles at
+        // map scale, so two neighbouring pins can both match and the second
+        // would teleport you straight back out of the first.
+        break;
       }
       return;
     }

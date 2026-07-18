@@ -105,12 +105,19 @@
   G.populateChunk = function populateChunk(state, cx, cy) {
     const w = state.world;
     const k = key(cx, cy);
+    if (!w.killed) w.killed = {}; // a world restored by an older save has none
     const content = World.rollChunkContent(w.world, cx, cy);
     const partyN = state.partyN || (state.players && state.players.length) || 1;
 
+    // A chunk you half-cleared stays half-cleared. `killed` counts how many of
+    // this chunk's deterministic roll are already dead; without it, killing seven
+    // of eight and stepping over a chunk border and back restocked all eight,
+    // which is an unlimited XP and loot pump.
+    const dead = w.killed[k] || 0;
     if (!w.cleared[k]) {
-      for (const s of content.monsters) {
-        state.monsters.push(G.spawnWorldMonster(state, Entities.makeMonster(s.type, content.floor, s.champion, partyN), s, k));
+      for (let i = dead; i < content.monsters.length; i++) {
+        const sp = content.monsters[i];
+        state.monsters.push(G.spawnWorldMonster(state, Entities.makeMonster(sp.type, content.floor, sp.champion, partyN), sp, k));
       }
       if (content.boss) {
         const boss = G.spawnWorldMonster(state, Entities.makeBoss(content.floor, partyN), content.boss, k);
@@ -119,8 +126,17 @@
         boss.worldBoss = true;
         boss.leash = 6;
         state.monsters.push(boss);
+        // Merge, never overwrite: `seen` and `slain` are player history that the
+        // save persists, and this runs again every time the chunk re-activates.
         w.bosses = w.bosses || {};
-        w.bosses[k] = { x: content.boss.x, y: content.boss.y, name: boss.name, seen: false, slain: false };
+        const prev = w.bosses[k] || {};
+        w.bosses[k] = {
+          x: content.boss.x,
+          y: content.boss.y,
+          name: boss.name,
+          seen: !!prev.seen,
+          slain: !!prev.slain,
+        };
       }
     }
 
@@ -151,6 +167,7 @@
     const w = state.world;
     if (!w || m.chunk === undefined) return;
     if (m.worldBoss && w.bosses && w.bosses[m.chunk]) w.bosses[m.chunk].slain = true;
+    if (!m.worldBoss) w.killed[m.chunk] = (w.killed[m.chunk] || 0) + 1;
     if (state.monsters.some((o) => o.chunk === m.chunk)) return;
     w.cleared[m.chunk] = true;
     w.respawn[m.chunk] = state.time + Balance.world.respawnSeconds;
@@ -213,7 +230,6 @@
   G.worldUpdate = function worldUpdate(state, dt) {
     const w = state.world;
     if (!w) return;
-    w.t = (w.t || 0) + dt;
 
     const want = G.desiredChunks(state);
     for (const k of [...w.active]) {
@@ -258,17 +274,18 @@
       }
     }
 
-    // Cleared chunks repopulate once their timer is up — but only while they are
-    // out of the live set, so a chunk never restocks in front of the player.
+    // Cleared chunks come back once their timer is up — but ONLY while they are
+    // out of the live set. Deactivating a live chunk here would take the player's
+    // dropped loot with it (drops are chunk-tagged) and then respawn a full
+    // population on top of them a frame later. A chunk that comes due while you
+    // are standing in it simply stays empty until you leave and return.
     const rs = w.respawn;
     for (const k of Object.keys(rs)) {
       if (rs[k] > state.time) continue;
+      if (want.has(Number(k))) continue;
       delete rs[k];
       w.cleared[k] = false;
-      // If it came due while still live, drop it properly — clearing the active
-      // flag alone would leave its old entities behind and the next activation
-      // pass would stack a second population on top of them.
-      G.deactivateChunk(state, Number(k));
+      delete w.killed[k];
     }
   };
 
@@ -287,10 +304,14 @@
       pois: {}, // discovery record: which mouths are found, which waystones woken
       bosses: {}, // world bosses laid eyes on, and whether they still stand
       cleared: {},
+      killed: {}, // chunkKey -> how many of that chunk's roll are already dead
       respawn: {},
-      t: 0,
     };
     state.world.world = world;
+    // The entity lists are reset below, so the live set has to reset with them —
+    // keeping it would leave chunks flagged active whose contents no longer
+    // exist, and activation would never rebuild them.
+    state.world.active = new Set();
     state.inWorld = true;
     state.inTown = false;
     // The world has no floor number to key its RNG on, so it draws from the run
@@ -408,6 +429,11 @@
   // used, which still suffices because the world is the OUTER level here and the
   // floors are the inner churn.
   Game.enterMouth = function enterMouth(state, poi) {
+    // A mouth remembers how deep you got. Portalling out and climbing back in
+    // used to reset you to its base floor, throwing away every descent — the
+    // town round-trip it replaced always put you back where you left off.
+    const mkey = poi.x + ',' + poi.y;
+    state.world.depth = state.world.depth || {};
     const stash = {
       overworld: true,
       dungeon: state.dungeon,
@@ -417,12 +443,12 @@
       explored: state.explored,
       flow: state.flow,
       world: state.world,
-      torches: state.dungeon.torches,
-      mouth: { x: poi.x, y: poi.y, name: poi.name },
+      mouth: { x: poi.x, y: poi.y, name: poi.name, key: mkey },
       portalPos: { x: (poi.x + 0.5) * TS, y: (poi.y + 0.5) * TS + TS },
     };
     state.dungeonSeed = poi.dungeonSeed;
-    state.floor = poi.floor;
+    state.floor = Math.max(poi.floor, state.world.depth[mkey] || 0);
+    state.mouthKey = mkey;
     state.mapOpen = false;
     state.stash = stash; // makeFloorState keeps an overworld stash across floors
     G.makeFloorState(state);
@@ -441,6 +467,12 @@
   G.leaveMouth = function leaveMouth(state) {
     const st = state.stash;
     if (!st || !st.overworld) return false;
+    // Bank the depth reached before the world comes back, so the same hole
+    // resumes where you left it.
+    if (st.mouth && st.mouth.key && st.world) {
+      st.world.depth = st.world.depth || {};
+      st.world.depth[st.mouth.key] = Math.max(st.world.depth[st.mouth.key] || 0, state.floor);
+    }
     state.dungeon = st.dungeon;
     state.monsters = st.monsters;
     state.props = st.props;
@@ -455,6 +487,7 @@
     state.inTown = false;
     state.trading = false;
     state.dungeonSeed = null;
+    state.mouthKey = null;
     // A trip underground and back is a trip away from camp: restock the stall
     // and repost the board, the same as returning through the portal used to.
     state.shop = G.rollWorldShop(state);
@@ -520,8 +553,8 @@
       pois: {},
       bosses: {},
       cleared: {},
+      killed: {}, // chunkKey -> how many of that chunk's roll are already dead
       respawn: {},
-      t: 0,
     };
     // Just inside the camp's south gate. Placing the hero beyond the plaza edge
     // drops them wherever the terrain happens to be — on some seeds that is the

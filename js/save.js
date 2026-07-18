@@ -89,7 +89,7 @@
     for (const k of Object.keys(w.bosses || {})) {
       const b = w.bosses[k];
       if (!b.seen && !b.slain) continue;
-      bosses.push({ k: Number(k), s: !!b.seen, d: !!b.slain });
+      bosses.push({ k: Number(k), x: b.x | 0, y: b.y | 0, s: !!b.seen, d: !!b.slain });
     }
     return { visited: Save.packChunks(w.visited), pois, bosses };
   };

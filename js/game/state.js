@@ -276,8 +276,8 @@
         pois: {},
         bosses: {},
         cleared: {},
+        killed: {},
         respawn: {},
-        t: 0,
       };
       // Rehydrate discovery against freshly regenerated POIs, so a save can never
       // resurrect a landmark the generator no longer places.
@@ -290,7 +290,17 @@
         state.world.pois[rec.k] = { ...poi, found: !!rec.f, unlocked: !!rec.u };
       }
       for (const rec of (saved && saved.bosses) || []) {
-        state.world.bosses[rec.k] = { x: 0, y: 0, name: 'A world boss', seen: !!rec.s, slain: !!rec.d };
+        // Coordinates come from the save. Defaulting them to (0,0) put every
+        // remembered boss pin in the map's far north-west corner, thousands of
+        // tiles from where the thing actually stands.
+        const bc = World.chunkCenter(rec.k % World.CHUNKS, Math.floor(rec.k / World.CHUNKS));
+        state.world.bosses[rec.k] = {
+          x: typeof rec.x === 'number' && rec.x ? rec.x : bc.x,
+          y: typeof rec.y === 'number' && rec.y ? rec.y : bc.y,
+          name: 'A world boss',
+          seen: !!rec.s,
+          slain: !!rec.d,
+        };
       }
       const TSl = TS;
       const at = data.worldPos

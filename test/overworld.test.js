@@ -440,8 +440,21 @@ test('clearing a chunk keeps it clear until its respawn timer is up', () => {
   s = pump(s, 3);
   assert.equal(s.monsters.filter((m) => m.chunk === chunk).length, 0, 'a cleared chunk restocked immediately');
 
-  // Once the timer passes, it comes back.
+  // Once the timer passes it comes back — but only while you are away from it.
+  // A chunk must never restock in front of the player: dropping it while live
+  // would take the loot lying in it with it (drops are chunk-tagged) and then
+  // spawn a fresh population on top of the party a frame later.
+  s.player.x = (spot.x + 0.5) * TS;
+  s.player.y = (spot.y + 0.5) * TS;
+  s = pump(s, 3);
   s.time = s.world.respawn[chunk] + 1;
+  s = pump(s, 3);
+  assert.equal(s.world.cleared[chunk], true, 'a live chunk restocked under the player');
+  assert.equal(s.monsters.filter((m) => m.chunk === chunk).length, 0);
+
+  // Walk away, then back: now it is dangerous again.
+  s.player.x = (awaySpot.x + 0.5) * TS;
+  s.player.y = (awaySpot.y + 0.5) * TS;
   s = pump(s, 3);
   assert.equal(s.world.cleared[chunk], false, 'the chunk never came off the cleared list');
   s.player.x = (spot.x + 0.5) * TS;
@@ -1150,4 +1163,197 @@ test('loot dropped on a dungeon floor is untagged and never reclaimed', () => {
   const m = s.monsters[0];
   G.hitMonster(s, m, 99999, s.player);
   for (const g of s.groundItems) assert.equal(g.chunk, undefined, 'a floor drop got a chunk tag');
+});
+
+// ---- Regressions found by review ----
+
+test('a co-op party stepping onto a mouth dives into it, and keeps the continent', () => {
+  // The shared-descent path was gated on `!state.inTown` only, so out in the
+  // world it called G.descend — replacing the continent with a runSeed floor and
+  // leaving no stash to climb back through. The party lost the overworld for the
+  // rest of the run.
+  let s = Game.newSoloRun(4242);
+  const world = s.world.world;
+  World.ensureAround(world, World.TOWN_CX, World.TOWN_CY, 4);
+  const mouth = Object.values(world.pois).find((p) => p.kind === 'mouth');
+
+  // Seat a second hero so the shared-descent branch is the one that runs.
+  const ally = { ...s.player, id: 'p1', bag: { ...s.player.bag }, skillCd: { ...s.player.skillCd } };
+  s.players = [s.player, ally];
+  for (const pl of s.players) {
+    pl.x = (mouth.x + 0.5) * TS;
+    pl.y = (mouth.y + 0.5) * TS;
+  }
+  s = pump(s, 4);
+
+  assert.equal(s.inWorld, false, 'the party never went down');
+  assert.equal(s.dungeonSeed, mouth.dungeonSeed, 'the party dove with the wrong seed');
+  assert.ok(s.stash && s.stash.overworld, 'the party dove without stashing the continent');
+  G.travel(s, { kind: 'town' });
+  assert.equal(s.inWorld, true, 'the party could not get back to the surface');
+});
+
+test('a chunk that comes due while you are standing in it does not restock under you', () => {
+  let s = Game.newSoloRun(4242);
+  const c = World.chunkCenter(22, 22);
+  const spot = G.findOpenTile(s.world.world, c.x, c.y);
+  s.player.x = (spot.x + 0.5) * TS;
+  s.player.y = (spot.y + 0.5) * TS;
+  s = pump(s, 3);
+  const chunk = s.monsters.find((m) => !m.worldBoss).chunk;
+  for (const m of s.monsters.filter((m) => m.chunk === chunk)) G.hitMonster(s, m, 99999, s.player);
+  const loot = s.groundItems.filter((g) => g.chunk === chunk).length;
+  assert.ok(loot > 0, 'the kills dropped nothing to protect');
+
+  // Let the respawn timer expire without ever leaving.
+  s.time = s.world.respawn[chunk] + 1;
+  s = pump(s, 4);
+  assert.equal(s.groundItems.filter((g) => g.chunk === chunk).length, loot, 'the sweep ate the loot lying at the player’s feet');
+  assert.equal(s.monsters.filter((m) => m.chunk === chunk).length, 0, 'a fresh population spawned on top of the player');
+});
+
+test('half-clearing a chunk and stepping over the border does not restock it', () => {
+  let s = Game.newSoloRun(4242);
+  const c = World.chunkCenter(22, 22);
+  const spot = G.findOpenTile(s.world.world, c.x, c.y);
+  s.player.x = (spot.x + 0.5) * TS;
+  s.player.y = (spot.y + 0.5) * TS;
+  s = pump(s, 3);
+  const chunk = s.monsters.find((m) => !m.worldBoss).chunk;
+  const inChunk = s.monsters.filter((m) => m.chunk === chunk);
+  assert.ok(inChunk.length >= 3, 'need a few residents to half-clear');
+  const before = inChunk.length;
+  // Kill all but one.
+  for (const m of inChunk.slice(0, before - 1)) G.hitMonster(s, m, 99999, s.player);
+
+  // Pace out past the activation radius and back — the classic farm loop.
+  const away = World.chunkCenter(10, 10);
+  const awaySpot = G.findOpenTile(s.world.world, away.x, away.y);
+  s.player.x = (awaySpot.x + 0.5) * TS;
+  s.player.y = (awaySpot.y + 0.5) * TS;
+  s = pump(s, 3);
+  s.player.x = (spot.x + 0.5) * TS;
+  s.player.y = (spot.y + 0.5) * TS;
+  s = pump(s, 3);
+
+  const after = s.monsters.filter((m) => m.chunk === chunk).length;
+  assert.ok(after <= 1, `a half-cleared chunk restocked to ${after} — that is an unlimited XP pump`);
+});
+
+test('a world boss keeps its seen and slain flags when its chunk reloads', () => {
+  let s = Game.newSoloRun(4242);
+  // Find a chunk that actually rolls a boss.
+  let bossChunk = null;
+  for (let cx = 24; cx < 32 && !bossChunk; cx++) {
+    for (let cy = 24; cy < 32; cy++) {
+      if (World.budgetOf(s.world.world.seed, cx, cy).boss) {
+        bossChunk = { cx, cy };
+        break;
+      }
+    }
+  }
+  assert.ok(bossChunk, 'no world boss in the far quadrant to test with');
+  const c = World.chunkCenter(bossChunk.cx, bossChunk.cy);
+  const spot = G.findOpenTile(s.world.world, c.x, c.y);
+  s.player.x = (spot.x + 0.5) * TS;
+  s.player.y = (spot.y + 0.5) * TS;
+  s = pump(s, 4);
+  const key = World.chunkKey(bossChunk.cx, bossChunk.cy);
+  assert.ok(s.world.bosses[key], 'the boss record was never created');
+  s.world.bosses[key].seen = true;
+
+  // Walk away and back: populateChunk runs again.
+  const away = World.chunkCenter(10, 10);
+  const awaySpot = G.findOpenTile(s.world.world, away.x, away.y);
+  s.player.x = (awaySpot.x + 0.5) * TS;
+  s.player.y = (awaySpot.y + 0.5) * TS;
+  s = pump(s, 3);
+  s.player.x = (spot.x + 0.5) * TS;
+  s.player.y = (spot.y + 0.5) * TS;
+  s = pump(s, 4);
+  assert.equal(s.world.bosses[key].seen, true, 're-activation wiped the boss discovery flag');
+});
+
+test('a restored world boss pin sits where the boss is, not in the map corner', () => {
+  Save._storage = memStorage();
+  const s = Game.newSoloRun(4242);
+  const key = World.chunkKey(27, 27);
+  const c = World.chunkCenter(27, 27);
+  s.world.bosses[key] = { x: c.x + 5, y: c.y - 3, name: 'Test Boss', seen: true, slain: false };
+  Save.write(s);
+  const restored = Game.fromSave(Save.load());
+  const rec = restored.world.bosses[key];
+  assert.ok(rec, 'the boss record was lost');
+  assert.equal(rec.x, c.x + 5, 'the pin lost its x');
+  assert.equal(rec.y, c.y - 3, 'the pin lost its y');
+  assert.ok(rec.x > 100 && rec.y > 100, 'the pin collapsed toward the map corner');
+});
+
+test('a mouth remembers how deep you got, so climbing back in resumes there', () => {
+  let s = Game.newSoloRun(4242);
+  const world = s.world.world;
+  World.ensureAround(world, World.TOWN_CX, World.TOWN_CY, 4);
+  const mouth = Object.values(world.pois).find((p) => p.kind === 'mouth');
+  s.player.x = (mouth.x + 0.5) * TS;
+  s.player.y = (mouth.y + 0.5) * TS;
+  s = pump(s, 2);
+  const base = s.floor;
+  for (let i = 0; i < 3; i++) G.descend(s);
+  const deep = s.floor;
+  assert.equal(deep, base + 3);
+
+  G.travel(s, { kind: 'town' }); // surface
+  assert.equal(s.inWorld, true);
+  s.player.x = (mouth.x + 0.5) * TS;
+  s.player.y = (mouth.y + 0.5) * TS;
+  s = pump(s, 2);
+  assert.equal(s.inWorld, false, 'did not dive back in');
+  assert.equal(s.floor, deep, `re-entry reset depth from ${deep} to ${s.floor}, discarding every descent`);
+});
+
+test('one click on overlapping waystone pins is one journey', () => {
+  const UI = require('../js/ui.js');
+  const I = UI._;
+  let s = Game.newSoloRun(4242);
+  const world = s.world.world;
+  World.ensureAround(world, World.TOWN_CX, World.TOWN_CY, 6);
+  const stones = Object.entries(world.pois).filter(([, p]) => p.kind === 'waystone').slice(0, 2);
+  assert.equal(stones.length, 2, 'need two waystones');
+  for (const [k, p] of stones) s.world.pois[k] = { ...p, found: true, unlocked: true };
+  s.mapOpen = true;
+
+  const view = { w: 1280, h: 720 };
+  const L = I.worldMapLayout(view);
+  const pt = I.worldMapPoint(L, stones[0][1].x, stones[0][1].y, World.SIZE);
+  const input = {
+    keys: { w: false, a: false, s: false, d: false, space: false, ctrl: false },
+    pressed: new Set(),
+    mouse: { x: pt.x, y: pt.y, click: true, rclick: false },
+  };
+  UI.update(s, input, view);
+  // Whichever stone won, we are standing at exactly one of them — not teleported
+  // twice through both.
+  const at = stones.filter(([, p]) => Math.hypot(s.player.x - (p.x + 0.5) * TS, s.player.y - (p.y + 0.5) * TS) < 4 * TS);
+  assert.equal(at.length, 1, 'the click did not land on exactly one waystone');
+});
+
+test('the co-op snapshot carries the mouth’s dungeon seed so clients build the right floor', () => {
+  const RoomMod = require('../server/room.js');
+  const Room = RoomMod.Room || RoomMod;
+  const room = new Room({ code: 'SEED', seed: 4242 });
+  const a = room.join({ name: 'A' });
+  // On the surface there is no dungeon seed to send.
+  assert.equal(room.snapshotFor(a.id).dungeonSeed, null);
+
+  const world = room.state.world.world;
+  World.ensureAround(world, World.TOWN_CX, World.TOWN_CY, 4);
+  const mouth = Object.values(world.pois).find((p) => p.kind === 'mouth');
+  Game.enterMouth(room.state, mouth);
+  const snap = room.snapshotFor(a.id);
+  assert.equal(snap.inWorld, false);
+  assert.equal(snap.dungeonSeed, mouth.dungeonSeed >>> 0, 'the snapshot must carry the mouth’s own seed');
+  // A client building from it gets the server's floor, not a runSeed one.
+  const mine = D.generateDungeon(snap.dungeonSeed, snap.floor);
+  assert.deepEqual(mine.stairs, room.state.dungeon.stairs, 'client and server disagree on the floor');
+  assert.notDeepEqual(D.generateDungeon(room.seed, snap.floor).stairs, mine.stairs, 'the room seed would have built a different floor');
 });

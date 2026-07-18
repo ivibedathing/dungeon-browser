@@ -393,6 +393,7 @@
         floor: b.floor,
         inWorld: !!b.inWorld,
         worldSeed: b.worldSeed,
+        dungeonSeed: b.dungeonSeed,
         players: lerpList(a.players, b.players, f),
         monsters: lerpList(a.monsters, b.monsters, f),
         projectiles: lerpList(a.projectiles, b.projectiles, f),
@@ -407,6 +408,7 @@
         floor: snapshot.floor,
         inWorld: !!snapshot.inWorld,
         worldSeed: snapshot.worldSeed,
+        dungeonSeed: snapshot.dungeonSeed,
         players: snapshot.players.map((e) => Object.assign({}, e)),
         monsters: snapshot.monsters.map((e) => Object.assign({}, e)),
         projectiles: snapshot.projectiles.map((e) => Object.assign({}, e)),
@@ -547,10 +549,10 @@
       const inWorld = !!(snap && snap.inWorld);
       if (inWorld) {
         if (!rs.dungeon || !rs.dungeon.overworld) {
-          const seed = (snap.worldSeed >>> 0) || net.seed;
+          const seed = typeof snap.worldSeed === 'number' ? snap.worldSeed >>> 0 : net.seed;
           const world = World.create(seed);
           World.ensureChunk(world, World.TOWN_CX, World.TOWN_CY);
-          rs.world = { world, seed, active: new Set(), visited: {}, pois: {}, bosses: {}, cleared: {}, respawn: {}, t: 0 };
+          rs.world = { world, seed, active: new Set(), visited: {}, pois: {}, bosses: {}, cleared: {}, killed: {}, respawn: {} };
           rs.dungeon = Game._.makeOverworldLevel(world);
           rs.explored = Game._.makeWorldExplored();
           rs.flow = { field: null, t: 0 };
@@ -559,10 +561,16 @@
         rs.inWorld = true;
         return;
       }
-      if (rs.dungeon && !rs.dungeon.overworld && rs.floor === floor) return;
+      // A dungeon reached through a mouth is generated from THAT mouth's seed,
+      // which the snapshot carries; only the classic descent falls back to the
+      // room seed. Getting this wrong desyncs the client's walls from the
+      // server's and makes the floor unplayable.
+      const dseed = snap && typeof snap.dungeonSeed === 'number' ? snap.dungeonSeed >>> 0 : net.seed;
+      if (rs.dungeon && !rs.dungeon.overworld && rs.floor === floor && rs.dungeonSeed === dseed) return;
       rs.floor = floor;
       rs.inWorld = false;
-      rs.dungeon = Dungeon.generateDungeon(net.seed, floor);
+      rs.dungeonSeed = dseed;
+      rs.dungeon = Dungeon.generateDungeon(dseed, floor);
       rs.explored = Array.from({ length: rs.dungeon.height }, () => new Array(rs.dungeon.width).fill(false));
       rs.flow = { field: null, t: 0 };
     }

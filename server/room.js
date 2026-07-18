@@ -262,6 +262,10 @@ class Room {
       // prediction run unchanged across a chunk boundary.
       inWorld: !!s.inWorld,
       worldSeed: s.worldSeed >>> 0,
+      // Which dungeon, when we are in one. Every mouth carries its own seed, so
+      // without this the client regenerates the floor from the ROOM seed and
+      // draws walls where the server has floor — the level is unplayable.
+      dungeonSeed: s.dungeonSeed == null ? null : s.dungeonSeed >>> 0,
       descendT: typeof s.descendT === 'number' ? round2(s.descendT) : null, // shared descent banner
       // The requesting player's own private state — the fields the HUD reads that
       // aren't in the shared entity lists and that the client can't derive. Gold is

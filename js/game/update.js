@@ -522,14 +522,27 @@
     if (!state.dead && !state.inTown && !G.arenaHeld(state) && state.players.length > 1) {
       const living = state.players.filter((pl) => !pl.dead && !pl.down);
       const onIt = living.filter((pl) => onStairs(state, pl));
+      // A STAIRS_DOWN tile means two different things depending on where the
+      // party is standing, exactly as it does on the solo path: underground it
+      // is the way deeper, out on the continent it is the mouth of a dungeon
+      // with its own seed and its own starting floor. Without this the shared
+      // descent called G.descend out in the world, which replaced the whole
+      // continent with a runSeed floor and left no stash to climb back through
+      // — the party lost the overworld permanently.
+      const go = () => {
+        if (!state.inWorld) return G.descend(state);
+        const lead = onIt[0];
+        const poi = G.mouthAt(state, Math.floor(lead.x / TS), Math.floor(lead.y / TS));
+        if (poi) Game.enterMouth(state, poi);
+      };
       if (onIt.length > 0 && living.length > 0) {
         if (onIt.length === living.length) {
-          G.descend(state);
+          go();
           return state;
         }
         state.descendT = (state.descendT == null ? C.descendCountdown : state.descendT) - dt;
         if (state.descendT <= 0) {
-          G.descend(state);
+          go();
           return state;
         }
       } else {
