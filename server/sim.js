@@ -15,6 +15,7 @@ globalThis.Skills = require('../js/skills.js');
 globalThis.Bosses = require('../js/bosses.js');
 globalThis.Entities = require('../js/entities.js');
 globalThis.Dungeon = require('../js/dungeon.js');
+globalThis.World = require('../js/world.js');
 globalThis.Quests = require('../js/quests.js');
 
 // Sfx and Save are browser-only. The sim already guards both with `typeof … !==

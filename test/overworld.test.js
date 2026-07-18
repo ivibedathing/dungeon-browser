@@ -850,3 +850,133 @@ test('a save can never resurrect a landmark the generator no longer places', () 
   const restored = Game.fromSave(snap);
   assert.equal(restored.world.pois[World.chunkKey(5, 5)], undefined, 'a phantom landmark was restored');
 });
+
+// ---- Phase 5: co-op ----
+
+test('a room is a shared continent, and joining does not replace it with a floor', () => {
+  const { Game: SimGame } = require('../server/sim.js');
+  const RoomMod = require('../server/room.js');
+  const Room = RoomMod.Room || RoomMod;
+  const room = new Room({ code: 'WRLD', seed: 777 });
+  assert.equal(room.state.inWorld, true, 'a fresh room should be on the continent');
+
+  const a = room.join({ name: 'A' });
+  const b = room.join({ name: 'B' });
+  // refreshPartyScaling used to regenerate the floor on every join, which out
+  // here would swap the whole continent for a 120x120 dungeon.
+  assert.equal(room.state.inWorld, true, 'joining replaced the world with a dungeon floor');
+  assert.equal(room.state.dungeon.overworld, true);
+  assert.equal(room.state.players.length, 2);
+
+  let ms = 0;
+  const step = (n) => {
+    for (let i = 0; i < n; i++) {
+      ms += 1000 / 30;
+      if (room.step) room.step(ms);
+      else room.tick(ms);
+    }
+  };
+  step(30);
+  for (const p of room.state.players) {
+    const tx = Math.floor(p.x / TS);
+    const ty = Math.floor(p.y / TS);
+    assert.ok(D.isWalkable(room.state.dungeon.grid[ty][tx]), `${p.id} joined inside terrain`);
+    const c = World.chunkOf(tx, ty);
+    assert.equal(World.ringOf(c.cx, c.cy), 0, `${p.id} did not arrive at Ashfall`);
+  }
+  assert.ok(room.state.world.active.size > 0, 'the room activated no chunks');
+
+  // The snapshot tells the client which kind of level to build.
+  const snap = room.snapshotFor(a.id);
+  assert.equal(snap.inWorld, true);
+  assert.equal(snap.worldSeed, room.state.worldSeed >>> 0);
+  void b;
+  void SimGame;
+});
+
+test('server activation runs over the union of the party’s radii, and stays capped', () => {
+  const { Game: SimGame } = require('../server/sim.js');
+  const RoomMod = require('../server/room.js');
+  const Room = RoomMod.Room || RoomMod;
+  const room = new Room({ code: 'WRL2', seed: 777 });
+  room.join({ name: 'A' });
+  room.join({ name: 'B' });
+  let ms = 0;
+  const step = (n) => {
+    for (let i = 0; i < n; i++) {
+      ms += 1000 / 30;
+      if (room.step) room.step(ms);
+      else room.tick(ms);
+    }
+  };
+  step(10);
+  const together = room.state.world.active.size;
+
+  // Send one player to the far side of the map.
+  const c = World.chunkCenter(24, 24);
+  const spot = SimGame._.findOpenTile(room.state.world.world, c.x, c.y);
+  room.state.players[1].x = (spot.x + 0.5) * TS;
+  room.state.players[1].y = (spot.y + 0.5) * TS;
+  step(10);
+  const scattered = room.state.world.active.size;
+
+  assert.ok(scattered > together, 'a scattered party should light more of the map');
+  assert.ok(scattered <= Balance.world.activeChunkCap, `active set ${scattered} broke the cap`);
+});
+
+test('the client rebuilds the same continent from the seed alone, streaming no tiles', () => {
+  // The projection carries absolute world pixels and a seed — never a tile, and
+  // never a chunk-local coordinate — which is what lets prediction run unchanged
+  // across a chunk boundary.
+  const RoomMod = require('../server/room.js');
+  const Room = RoomMod.Room || RoomMod;
+  const room = new Room({ code: 'WRL3', seed: 777 });
+  const a = room.join({ name: 'A' });
+  const snap = room.snapshotFor(a.id);
+  const json = JSON.stringify(snap);
+  assert.ok(!/"grid"/.test(json), 'the snapshot is shipping terrain');
+  assert.ok(json.length < 20000, `snapshot is ${json.length} bytes — terrain has leaked in`);
+
+  // A client building from the seed lands on byte-identical ground.
+  const clientWorld = World.create(snap.worldSeed);
+  const serverWorld = room.state.world.world;
+  for (const [cx, cy] of [[16, 16], [17, 16], [14, 19]]) {
+    World.ensureChunk(clientWorld, cx, cy);
+    World.ensureChunk(serverWorld, cx, cy);
+    for (let y = cy * 64; y < cy * 64 + 64; y += 7) {
+      for (let x = cx * 64; x < cx * 64 + 64; x += 7) {
+        assert.equal(clientWorld.grid[y][x], serverWorld.grid[y][x], `client/server disagree at ${x},${y}`);
+      }
+    }
+  }
+});
+
+test('prediction carries a hero across a chunk boundary with no seam', () => {
+  // The one thing a chunked world can get wrong in netcode: movement that
+  // behaves differently on either side of a chunk edge. Nothing in the movement
+  // path is chunk-aware — the grid is one array in world tile coords — so this
+  // pins that it stays that way.
+  const s = worldRun();
+  const world = s.world.world;
+  // Stand just west of a chunk border on open ground.
+  const border = 20 * World.CHUNK;
+  const spot = G.findOpenTile(world, border - 2, 20 * World.CHUNK + 32);
+  World.ensureAround(world, World.chunkOf(spot.x, spot.y).cx, World.chunkOf(spot.x, spot.y).cy, 2);
+  const p = { ...s.player, x: (spot.x + 0.5) * TS, y: (spot.y + 0.5) * TS };
+  const stats = Entities.effectiveStats(p);
+  const input = { keys: { w: false, a: false, s: false, d: true }, pressed: new Set(), mouse: { x: -1, y: -1 } };
+
+  const steps = [];
+  for (let i = 0; i < 90; i++) {
+    const before = p.x;
+    Game.predictMovement(world.grid, p, input, 1 / 30, stats);
+    steps.push(p.x - before);
+  }
+  const moving = steps.filter((d) => d > 0.01);
+  assert.ok(moving.length > 30, 'the hero never got moving');
+  // No step is wildly different from its neighbours — a seam would show up as a
+  // stall or a jump exactly at the boundary.
+  const maxStep = Math.max(...moving);
+  const minStep = Math.min(...moving);
+  assert.ok(maxStep - minStep < 0.5, `movement stuttered across the boundary (${minStep} … ${maxStep})`);
+});

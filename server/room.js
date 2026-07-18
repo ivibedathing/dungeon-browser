@@ -46,7 +46,11 @@ class Room {
   constructor({ code, seed }) {
     this.code = code;
     this.seed = seed >>> 0;
-    this.state = Game.newRun(this.seed);
+    // A room is a shared continent. Chunk activation already runs over the
+    // union of the players' radii (G.desiredChunks reads state.players) and is
+    // capped there, so a scattered party cannot grow the live set without
+    // bound — the cap is what the server's per-tick budget is sized against.
+    this.state = Game.newSoloRun(this.seed);
     // newRun always builds a solo hero; the room's seats are filled by join().
     // Dropping it here keeps one code path for every player, host included.
     this.state.players = [];
@@ -86,7 +90,12 @@ class Room {
     // Per-player bag (Phase 4): playerFromCharacter seeds p.bag from the loaded blob;
     // a fresh guest gets an empty p.bag. state.bag aliases players[0] via syncLocalAlias.
     const p = opts && opts.character ? Character.playerFromCharacter(opts.character, id) : freshPlayer(id, opts);
-    const entry = this.state.dungeon.entry;
+    // Joiners arrive at Ashfall, on ground that is actually standable — out in
+    // the world a nominated tile can land on water or a cliff face.
+    const s0 = this.state;
+    const entry = s0.inWorld && s0.world
+      ? Game._.findOpenTile(s0.world.world, s0.dungeon.entry.x, s0.dungeon.entry.y)
+      : s0.dungeon.entry;
     // Fan joiners around the entry tile so two players never occupy one point.
     const a = (this.playerCount / Room.MAX_PLAYERS) * Math.PI * 2;
     const spread = isHost ? 0 : 14;
@@ -122,10 +131,17 @@ class Room {
       (s.ambushes || []).every((a) => !a.triggered) &&
       s.monsters.every((m) => m.hp === m.maxHP) &&
       s.players.every((pl) => !pl.dead && !pl.down);
-    if (pristine) {
+    if (!pristine) return;
+    if (s.inWorld) {
+      // Out in the world there is no floor to regenerate — and regenerating one
+      // would replace the whole continent with a dungeon. Dropping the live
+      // chunks is the equivalent move: they repopulate at the new party size on
+      // the next tick, from the same deterministic roll.
+      for (const k of [...s.world.active]) Game._.deactivateChunk(s, k);
+    } else {
       Game._.makeFloorState(s);
-      this.syncLocalAlias();
     }
+    this.syncLocalAlias();
   }
 
   // The sim still has a notion of "the local player" (players[0]): the camera
@@ -240,6 +256,12 @@ class Room {
       you: id,
       ack: this.ack(id),
       floor: s.floor,
+      // Which KIND of level this is, so the client builds the same one. The
+      // rest of the projection is absolute world pixels either way — it
+      // carries no chunk-local references, which is what lets client
+      // prediction run unchanged across a chunk boundary.
+      inWorld: !!s.inWorld,
+      worldSeed: s.worldSeed >>> 0,
       descendT: typeof s.descendT === 'number' ? round2(s.descendT) : null, // shared descent banner
       // The requesting player's own private state — the fields the HUD reads that
       // aren't in the shared entity lists and that the client can't derive. Gold is
