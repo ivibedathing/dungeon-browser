@@ -13,6 +13,22 @@
     const t = state.time;
     const bob = Math.sin(t * 8) * 1.2;
 
+    // A downed co-op hero is a faint, slumped ghost — not gone, awaiting a revive.
+    if (p.down) {
+      ctx.save();
+      ctx.globalAlpha = 0.4 + 0.15 * Math.sin(t * 4);
+      ctx.fillStyle = p.shirt || '#7f8aa8';
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y + 4, 11, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(220,225,235,0.7)';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y - 2, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
+
     ctx.fillStyle = 'rgba(0,0,0,0.45)';
     ctx.beginPath();
     ctx.ellipse(p.x, p.y + 9, 11, 4.5, 0, 0, Math.PI * 2);

@@ -340,3 +340,55 @@ test('a portal is owner-tagged and travel moves the whole party', () => {
   const near = (pl) => Math.hypot(pl.x - state.player.x, pl.y - state.player.y) < 60;
   assert.ok(near(p1), 'the ally travelled to town with the party');
 });
+
+// ---- Task 7: party UX pure helpers ----
+
+test('partyRows: empty for solo, one row per member with HP/level/down state', () => {
+  const UI = require('../js/ui.js');
+  const solo = Game.newRun(95);
+  assert.deepEqual(UI.partyRows(solo), [], 'solo shows no party bar');
+  const p0 = solo.player;
+  const p1 = addAlly(solo, 'p1', p0.x + 20, p0.y);
+  p1.down = true;
+  p1.reviveT = require('../js/balance.js').coop.reviveTime / 2;
+  const rows = UI.partyRows(solo);
+  assert.equal(rows.length, 2, 'a row per member');
+  assert.ok(rows[0].isYou, 'the local hero is marked');
+  const downRow = rows.find((r) => r.id === 'p1');
+  assert.ok(downRow.down, 'down state surfaced');
+  assert.ok(Math.abs(downRow.reviveFrac - 0.5) < 0.01, 'revive progress ~50%');
+});
+
+test('descentBannerText: null when idle, counts up seconds while descending', () => {
+  const UI = require('../js/ui.js');
+  assert.equal(UI.descentBannerText(null), null);
+  assert.equal(UI.descentBannerText(0), null);
+  assert.equal(UI.descentBannerText(4.2), 'Descending in 5…');
+  assert.equal(UI.descentBannerText(0.3), 'Descending in 1…');
+});
+
+test('the render + HUD path draws a party (down ally, descent banner) without throwing', () => {
+  globalThis.Game = Game; // render/player.js reads the Game global (browser: window.Game)
+  globalThis.Render = require('../js/render.js');
+  const UI = require('../js/ui.js');
+  const ctx = new Proxy({}, {
+    get(t, k) {
+      if (k === 'measureText') return (s) => ({ width: String(s).length * 6 });
+      if (k === 'createLinearGradient' || k === 'createRadialGradient') return () => ({ addColorStop() {} });
+      return typeof t[k] !== 'undefined' ? t[k] : (t[k] = () => {});
+    },
+    set(t, k, v) { t[k] = v; return true; },
+  });
+  const view = { w: 1280, h: 800 };
+  let state = Game.newRun(96);
+  const p0 = state.player;
+  const p1 = addAlly(state, 'p1', p0.x + 30, p0.y);
+  p1.down = true;
+  p1.reviveT = 0.8;
+  state.descendT = 6;
+  state = Game.update(state, {}, 0.03); // populate flow field / explored
+  state.descendT = 6; // (update may reset; force for the draw)
+  Render.draw(ctx, state, view);
+  UI.draw(ctx, state, view);
+  assert.ok(true, 'party render + HUD path completed');
+});
