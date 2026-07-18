@@ -295,6 +295,8 @@
   }
   G.levelUpJuice = levelUpJuice;
 
+  G.hitMonster = hitMonster;
+
   function killMonster(state, m, stats, killer = state.player) {
     state.kills++;
     state.monsters.splice(state.monsters.indexOf(m), 1);

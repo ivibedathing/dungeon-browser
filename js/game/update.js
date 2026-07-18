@@ -40,6 +40,7 @@
 
   // Per-player upkeep that runs even while menus pause the world.
   function updatePlayerAlways(state, p, dt) {
+    G.statusUpdate(state, p, dt);
     const stats = Entities.effectiveStats(p);
     if (p.healPool > 0 && p.hp < stats.maxHP) {
       const heal = Math.min(p.healPool, p.healRate * dt, stats.maxHP - p.hp);
@@ -159,6 +160,9 @@
     const aimed = typeof input.aim === 'number' && Number.isFinite(input.aim);
     if (aimed) p.facing = input.aim;
 
+    // Stun freezes the hero outright — no steering, no roll, no escape.
+    if (Entities.hasStatus(p, 'stun')) return false;
+
     let dodgeStarted = false;
     if (input.pressed.has('dodge') && p.dodgeCdT <= 0 && p.dodgeT <= 0) {
       const dmx = (input.keys.d ? 1 : 0) - (input.keys.a ? 1 : 0);
@@ -207,7 +211,7 @@
     // Attack (hold the left mouse button to keep swinging) — never mid-roll. The
     // sim reads the held flag as `keys.space` for historical reasons; the client
     // now drives it from the mouse. Swings/shots fly along `p.facing` — the cursor.
-    if (input.keys.space && p.attackT <= 0 && p.dodgeT <= 0) G.playerAttack(state, p);
+    if (input.keys.space && p.attackT <= 0 && p.dodgeT <= 0 && !Entities.hasStatus(p, 'stun')) G.playerAttack(state, p);
 
     // Active skills (F / G / H).
     for (let i = 0; i < Skills.ACTIVE_ORDER.length; i++) {

@@ -6,6 +6,7 @@
 if (typeof window === 'undefined') {
   require('./game/core.js');
   require('./game/state.js');
+  require('./game/status.js');
   require('./game/combat.js');
   require('./game/ai.js');
   require('./game/inventory.js');

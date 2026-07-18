@@ -44,6 +44,20 @@
     };
   };
 
+  // Timed conditions live on the entity (see js/game/status.js, which owns
+  // applying and ticking them). The *read* side lives here because effectiveStats
+  // has to fold slow into moveMult, and Entities loads before any game/ part.
+  E.SLOW_FLOOR = 0.25; // slow never fully immobilizes; that is stun's job
+
+  E.hasStatus = function (ent, kind) {
+    return !!(ent && ent.status && ent.status[kind] && ent.status[kind].t > 0);
+  };
+
+  E.statusMoveMult = function (ent) {
+    if (!E.hasStatus(ent, 'slow')) return 1;
+    return Math.max(E.SLOW_FLOOR, 1 - ent.status.slow.mag);
+  };
+
   E.effectiveStats = function (player) {
     const g = Items.aggregateStats(player.equip);
     const sk = Skills.passives(player);
@@ -63,7 +77,7 @@
       defense: g.defense + sk.defense,
       lifePerKill: g.lifePerKill,
       xpMult: g.xpMult,
-      moveMult: g.moveMult,
+      moveMult: g.moveMult * E.statusMoveMult(player),
     };
   };
 

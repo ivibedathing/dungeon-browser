@@ -102,6 +102,9 @@
       pl.down = false;
       pl.downT = 0;
       pl.reviveT = 0;
+      // Conditions do not ride the stairs down — a burn from the last floor
+      // ticking away in the loading fade would be unreadable and unfair.
+      G.clearStatus(pl);
     });
     const p = state.player;
     state.descendT = null; // no descent armed on a fresh floor

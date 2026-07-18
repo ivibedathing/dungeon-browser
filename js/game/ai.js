@@ -22,6 +22,7 @@
     const p = nearestPlayer(state, m.x, m.y);
     if (!p) return;
     const stats = Entities.effectiveStats(p);
+    G.statusUpdate(state, m, dt);
     m.attackT = Math.max(0, m.attackT - dt);
     m.hitT = Math.max(0, m.hitT - dt);
     m.lungeT = Math.max(0, m.lungeT - dt);
@@ -40,6 +41,9 @@
       if (Math.abs(m.kby) < 2) m.kby = 0;
     }
 
+    // Stunned: knockback still applies above, but it cannot act or steer.
+    if (Entities.hasStatus(m, 'stun')) return;
+
     const dist = Math.hypot(p.x - m.x, p.y - m.y);
     const mtx = Math.floor(m.x / TS);
     const mty = Math.floor(m.y / TS);
@@ -57,7 +61,7 @@
         if (state.srand() < 0.4) m.wandA = NaN; // stand still
       }
       if (!Number.isNaN(m.wandA)) {
-        const v = m.speed * 0.35 * dt;
+        const v = m.speed * Entities.statusMoveMult(m) * 0.35 * dt;
         const moved = G.moveCircle(state.dungeon.grid, m.x, m.y, mr, Math.cos(m.wandA) * v, Math.sin(m.wandA) * v);
         m.x = moved.x;
         m.y = moved.y;
@@ -133,7 +137,7 @@
       }
     }
     const alen = Math.hypot(ax, ay) || 1;
-    const v = (m.speed * dt) / alen;
+    const v = (m.speed * Entities.statusMoveMult(m) * dt) / alen;
     const moved = G.moveCircle(state.dungeon.grid, m.x, m.y, mr, ax * v, ay * v);
     m.x = moved.x;
     m.y = moved.y;
