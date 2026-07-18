@@ -38,6 +38,23 @@
     mouse: Object.freeze({ x: -1, y: -1, click: false, rclick: false }),
   });
 
+  // Is a live guardian holding its arena with a hero inside it? The single source
+  // of truth for both the arena latch and the descent guard — reading the latched
+  // state.bossFight instead would be a frame-order race, since the latch is set
+  // later in the same tick than the stairs check.
+  G.arenaHeld = function arenaHeld(state) {
+    const bossDef = state.dungeon && state.dungeon.boss;
+    if (!bossDef) return false;
+    if (!state.monsters.some((m) => m.boss)) return false;
+    const br = bossDef.room;
+    return state.players.some((pl) => {
+      if (pl.dead || pl.down) return false;
+      const tx = Math.floor(pl.x / TS);
+      const ty = Math.floor(pl.y / TS);
+      return tx >= br.x && tx < br.x + br.w && ty >= br.y && ty < br.y + br.h;
+    });
+  };
+
   // Per-player upkeep that runs even while menus pause the world.
   function updatePlayerAlways(state, p, dt) {
     G.statusUpdate(state, p, dt);
@@ -56,6 +73,7 @@
     p.attackT = Math.max(0, p.attackT - dt);
     p.dodgeT = Math.max(0, p.dodgeT - dt);
     p.dodgeCdT = Math.max(0, p.dodgeCdT - dt);
+    if (state.victory) state.victory.t += dt;
     if (p.swing) {
       p.swing.t += dt;
       if (p.swing.t >= p.swing.dur) p.swing = null;
@@ -271,7 +289,12 @@
     // Stairs: solo descends instantly (unchanged feel). In a party the descent is a
     // shared countdown handled in updateWorld, so a lone player stepping on doesn't
     // yank the whole party down — see the descent logic there.
-    if (state.players.length <= 1) {
+    // The stairs sit INSIDE the boss arena, at its edge. Without this guard a
+    // hero can walk onto them mid-fight and descend with the boss at full
+    // health — and a retreating caster boss actively lures them there while
+    // they chase it. That skipped the act entirely and made the main quest
+    // unfinishable from act III on. Beat the guardian, then the way is open.
+    if (state.players.length <= 1 && !G.arenaHeld(state)) {
       const ptx = Math.floor(p.x / TS);
       const pty = Math.floor(p.y / TS);
       if (state.dungeon.grid[pty] && state.dungeon.grid[pty][ptx] === Dungeon.TILE.STAIRS_DOWN) {
@@ -368,14 +391,7 @@
     const bossDef = state.dungeon.boss;
     if (bossDef) {
       const bossMon = state.monsters.find((m) => m.boss);
-      const br = bossDef.room;
-      const inside = state.players.some((pl) => {
-        if (pl.dead || pl.down) return false;
-        const btx = Math.floor(pl.x / TS);
-        const bty = Math.floor(pl.y / TS);
-        return btx >= br.x && btx < br.x + br.w && bty >= br.y && bty < br.y + br.h;
-      });
-      const fighting = !!bossMon && inside;
+      const fighting = G.arenaHeld(state);
       if (fighting && !state.bossFight) {
         bossMon.aggroed = true;
         G.message(state, `${bossMon.name} bars your way!`, '#ff9a3d');
@@ -439,7 +455,7 @@
     // Shared descent (party): while ≥1 living hero stands on the stairs the party
     // countdown ticks; it fires at 0, or instantly once EVERY living hero is on the
     // stairs. Step off and it resets. (Solo descends instantly in updatePlayerActions.)
-    if (!state.dead && !state.inTown && state.players.length > 1) {
+    if (!state.dead && !state.inTown && !G.arenaHeld(state) && state.players.length > 1) {
       const living = state.players.filter((pl) => !pl.dead && !pl.down);
       const onIt = living.filter((pl) => onStairs(state, pl));
       if (onIt.length > 0 && living.length > 0) {

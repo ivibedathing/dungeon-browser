@@ -221,3 +221,165 @@ test('floors past 24 have no act and break nothing', () => {
   assert.equal(Bosses.actForFloor(state.floor), null, 'no act down here');
   assert.equal(state.player.mainQuest.complete, true, 'the quest stays complete');
 });
+
+// ---- Task 9: the ending ----
+
+test('slaying the final boss completes the quest and arms the victory card', () => {
+  let state = Game.newRun(4242);
+  state.floor = 23;
+  G.descend(state); // floor 24
+  const boss = state.monsters.find((m) => m.boss);
+  assert.ok(boss && boss.final, 'the final boss is here');
+  // Stand the hero on act VI so the kill is the one that ends it.
+  state.player.mainQuest = Quests.newMain();
+  for (let i = 0; i < 5; i++) {
+    const a = Bosses.ACTS[i];
+    Quests.recordBossKill(state.player.mainQuest, Entities.makeBoss(a.bossFloor), a.bossFloor);
+  }
+  assert.equal(state.player.mainQuest.act, 6, 'on the last act');
+
+  G.hitMonster(state, boss, 1e9, Entities.effectiveStats(state.player), 0, 0, state.player);
+  // Messages are queued as events; they only reach state.messages on a drain.
+  Game.applyEvents(state, Game.drainEvents(state));
+
+  assert.equal(state.player.mainQuest.complete, true, 'the quest is done');
+  assert.ok(state.victory, 'the victory card is armed');
+  assert.ok(state.messages.some((m) => /main quest is complete/i.test(m.text || m)), 'and announced');
+});
+
+test('the victory card times out instead of blocking the run', () => {
+  let state = Game.newRun(4242);
+  state.victory = { t: 0, dur: 7 };
+  const input = freshInput();
+  for (let i = 0; i < 60 * 9; i++) {
+    state = Game.update(state, input, 1 / 60);
+    Game.applyEvents(state, Game.drainEvents(state));
+  }
+  assert.ok(state.victory.t > 7, 'its clock ran past the duration');
+});
+
+test('the final boss carries the deepest phase ladder in the game', () => {
+  const final = Entities.makeBoss(24);
+  for (const a of Bosses.ACTS) {
+    if (a.final) continue;
+    assert.ok(final.phases.length >= Entities.makeBoss(a.bossFloor).phases.length, `deeper than act ${a.act}`);
+  }
+  assert.equal(final.phases.length, 4, 'four phases');
+  // It cycles the existing behaviors rather than introducing a fourth.
+  const used = new Set([final.behavior, ...final.phases.map((p) => p.behavior).filter(Boolean)]);
+  for (const b of used) assert.ok(G.BEHAVIORS[b], `${b} is an existing behavior`);
+});
+
+test('the run keeps going past 24: floors generate, guardians spawn, nothing throws', () => {
+  let state = Game.newRun(4242);
+  state.floor = 24;
+  for (let i = 0; i < 8; i++) {
+    assert.doesNotThrow(() => G.descend(state), `descending to floor ${state.floor + 1}`);
+    assert.ok(state.dungeon && state.dungeon.grid, `floor ${state.floor} generated`);
+    assert.equal(Bosses.actForFloor(state.floor), null, `floor ${state.floor} has no act`);
+  }
+  assert.equal(state.floor, 32, 'reached floor 32');
+});
+
+test('an arena floor past 24 still gets a working guardian with no act tagging', () => {
+  let state = Game.newRun(4242);
+  state.floor = 25;
+  G.descend(state); // floor 26 — an even floor, so an arena
+  const boss = state.monsters.find((m) => m.boss);
+  assert.ok(boss, 'a guardian spawned past the main quest');
+  assert.equal(boss.actBoss, undefined, 'not tagged to any act');
+  assert.equal(boss.final, undefined, 'and not a second ending');
+});
+
+test('a victorious hero descending past 24 banks nothing further and does not throw', () => {
+  let state = Game.newRun(4242);
+  for (const a of Bosses.ACTS) Quests.recordBossKill(state.player.mainQuest, Entities.makeBoss(a.bossFloor), a.bossFloor);
+  state.floor = 25;
+  G.descend(state);
+  const boss = state.monsters.find((m) => m.boss);
+  assert.doesNotThrow(() => G.hitMonster(state, boss, 1e9, Entities.effectiveStats(state.player), 0, 0, state.player));
+  assert.equal(state.player.mainQuest.complete, true, 'still complete, not rolled over');
+  assert.equal(state.player.mainQuest.act, Bosses.COUNT, 'no phantom act VII');
+});
+
+// ---- the boss-skip guard ----
+// Found by playing the whole quest end to end, not by unit tests: the stairs sit
+// INSIDE the boss arena, and nothing stopped a hero walking onto them mid-fight.
+// A retreating caster boss actively lures you there while you chase it, so acts
+// III onward were unfinishable in practice.
+
+test('you cannot ride the stairs out of a live boss fight', () => {
+  let state = Game.newRun(4242);
+  state.floor = 11;
+  G.descend(state); // floor 12 — the act III arena
+  const boss = state.monsters.find((m) => m.boss);
+  assert.ok(boss && boss.actBoss === 3, 'the act III boss is here');
+
+  // Stand on the stairs, inside the arena, with the boss untouched.
+  state.player.x = (state.dungeon.stairs.x + 0.5) * TS;
+  state.player.y = (state.dungeon.stairs.y + 0.5) * TS;
+  const before = state.floor;
+  state = Game.update(state, freshInput(), 1 / 60);
+  Game.applyEvents(state, Game.drainEvents(state));
+
+  assert.equal(state.bossFight, true, 'the fight is on');
+  assert.equal(state.floor, before, 'the stairs refuse while the guardian lives');
+  assert.equal(boss.hp, boss.maxHP, 'and the boss is still at full health');
+});
+
+test('killing the boss opens the way down again', () => {
+  let state = Game.newRun(4242);
+  state.floor = 11;
+  G.descend(state);
+  const boss = state.monsters.find((m) => m.boss);
+  state.player.x = (state.dungeon.stairs.x + 0.5) * TS;
+  state.player.y = (state.dungeon.stairs.y + 0.5) * TS;
+  state = Game.update(state, freshInput(), 1 / 60); // blocked
+  assert.equal(state.floor, 12, 'still on the boss floor');
+
+  G.hitMonster(state, boss, 1e9, Entities.effectiveStats(state.player), 0, 0, state.player);
+  Game.applyEvents(state, Game.drainEvents(state));
+  state = Game.update(state, freshInput(), 1 / 60);
+  assert.equal(state.floor, 13, 'the stairs work once the arena is clear');
+});
+
+test('stairs outside an arena are unaffected — normal floors descend as always', () => {
+  let state = Game.newRun(4242);
+  state.floor = 1; // odd floor: no arena at all
+  state.player.x = (state.dungeon.stairs.x + 0.5) * TS;
+  state.player.y = (state.dungeon.stairs.y + 0.5) * TS;
+  state = Game.update(state, freshInput(), 1 / 60);
+  assert.equal(state.floor, 2, 'ordinary descent is untouched');
+});
+
+test('the whole main quest is completable: six acts, floor 1 to 24', () => {
+  let state = Game.newRun(777);
+  state.player.baseMaxHP = 500000;
+  state.player.hp = 500000;
+  state.player.baseDamage = 900;
+  const input = freshInput();
+  input.keys.space = true;
+
+  for (let i = 0; i < 30 && !state.player.mainQuest.complete; i++) {
+    if (state.floor < 24) G.descend(state);
+    const boss = state.monsters.find((m) => m.boss);
+    if (!boss) continue;
+    state.player.x = boss.x - 50;
+    state.player.y = boss.y;
+    for (let t = 0; t < 3000 && state.monsters.indexOf(boss) !== -1; t++) {
+      state.player.facing = Math.atan2(boss.y - state.player.y, boss.x - state.player.x);
+      const d = Math.hypot(boss.x - state.player.x, boss.y - state.player.y);
+      input.keys.d = boss.x > state.player.x && d > 40;
+      input.keys.a = boss.x < state.player.x && d > 40;
+      input.keys.s = boss.y > state.player.y && d > 40;
+      input.keys.w = boss.y < state.player.y && d > 40;
+      state = Game.update(state, input, 1 / 60);
+      Game.applyEvents(state, Game.drainEvents(state));
+      state.player.hp = 500000; // testing quest flow, not balance
+    }
+  }
+  const mq = state.player.mainQuest;
+  assert.deepEqual(mq.slain, [1, 2, 3, 4, 5, 6], 'every act boss fell, in order');
+  assert.equal(mq.complete, true, 'the quest completed');
+  assert.ok(state.victory, 'the ending fired');
+});

@@ -415,6 +415,9 @@
         G.message(state, `Act ${Quests.ROMAN[act.act]} complete — ${act.done}`, '#ffd84d');
         if (pl.mainQuest.complete) {
           G.message(state, 'The main quest is complete. You have reached the bottom.', '#ffd84d');
+          // A timed card, not a modal: the run stays playable and the hero can
+          // keep descending past 24 if they want to.
+          state.victory = { t: 0, dur: 7 };
         }
         G.sfx(state, 'levelup');
       }

@@ -166,6 +166,33 @@
       }
     }
 
+    // Victory card — the ending. Times out rather than blocking, because the run
+    // is still playable afterwards: floors past 24 keep generating.
+    if (state.victory && state.victory.t < state.victory.dur) {
+      const vt = state.victory.t;
+      const fade = vt < 0.6 ? vt / 0.6 : Math.max(0, 1 - (vt - (state.victory.dur - 1.2)) / 1.2);
+      ctx.globalAlpha = Math.min(1, fade);
+      ctx.fillStyle = 'rgba(10,6,2,0.6)';
+      ctx.fillRect(0, 0, view.w, view.h);
+      ctx.textAlign = 'center';
+      ctx.font = `bold 46px ${SERIF}`;
+      ctx.fillStyle = 'rgba(0,0,0,0.9)';
+      ctx.fillText('THE LAST GATE IS CLOSED', view.w / 2 + 3, view.h * 0.40 + 3);
+      ctx.fillStyle = '#d9c06a';
+      ctx.fillText('THE LAST GATE IS CLOSED', view.w / 2, view.h * 0.40);
+      ctx.font = `16px ${SERIF}`;
+      ctx.fillStyle = '#c9b37e';
+      ctx.fillText(
+        `Level ${state.player.level}  ·  Floor ${state.floor}  ·  ${state.kills} kills  ·  all six acts`,
+        view.w / 2, view.h * 0.40 + 40
+      );
+      ctx.font = `italic 14px ${SERIF}`;
+      ctx.fillStyle = 'rgba(201,161,90,0.85)';
+      ctx.fillText('The stairs still go down.', view.w / 2, view.h * 0.40 + 66);
+      ctx.textAlign = 'left';
+      ctx.globalAlpha = 1;
+    }
+
     // Death overlay.
     if (state.dead) {
       const a = Math.min(0.78, state.deathT * 0.8);
