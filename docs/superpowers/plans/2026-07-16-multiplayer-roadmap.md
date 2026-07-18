@@ -195,3 +195,6 @@ files). Phase 4.5's Track C built on Phase 4's attacker-aware combat.
 - Client stays zero-build, plain script tags; server-only npm deps.
 - Every phase keeps the full `node --test test/*.test.js` suite green; new systems arrive test-first.
 - The claude.ai artifact remains offline-only (CSP blocks sockets); README must say so.
+- **Assets are always optional.** Phase 4.5's asset loader gives every asset a procedural
+  fallback: the game stays fully playable from `file://` with zero network and zero asset
+  files. No feature may hard-depend on a loaded file.
