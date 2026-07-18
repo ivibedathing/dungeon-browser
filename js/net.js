@@ -307,8 +307,13 @@
         pressed: [...input.pressed].filter((a) => SEND_EDGES.has(a)),
         mouse: { x: input.mouse.x, y: input.mouse.y, click: !!input.mouse.click, rclick: !!input.mouse.rclick },
       };
-      // Keep a replayable copy (keys + pressed are all reconciliation needs).
-      net._unacked.push({ seq: net._seq, input: { keys: { ...wire.keys }, pressed: new Set(wire.pressed) } });
+      // Mouse-look aim rides along when present so the server faces the hero at the
+      // cursor; omitted (not null) when the pointer hasn't moved, so an older/idle
+      // client simply reads as "no aim" on the wire.
+      if (typeof input.aim === 'number' && Number.isFinite(input.aim)) wire.aim = input.aim;
+      // Keep a replayable copy — keys, pressed, and aim are all reconciliation needs
+      // (aim so the predicted hero turns to the cursor immediately, not a round-trip later).
+      net._unacked.push({ seq: net._seq, input: { keys: { ...wire.keys }, pressed: new Set(wire.pressed), aim: wire.aim } });
       net._send(wire);
       return net._seq;
     };

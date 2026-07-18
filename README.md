@@ -50,7 +50,8 @@ The hosted claude.ai artifact build is **offline-only**: its content-security po
 | Key | Action |
 | --- | --- |
 | **WASD** / arrows | Move |
-| **M** | Attack — melee weapons swing an arc; bows loose arrows; wands hurl exploding fireballs |
+| **Mouse** | Aim — your hero always faces the cursor; attacks fly that way regardless of which way you walk |
+| **Left-click** (hold) | Attack — melee weapons swing an arc toward the cursor; bows loose arrows; wands hurl exploding fireballs. Hold to keep swinging |
 | **Space** | Dodge roll — a quick dash with invulnerability frames (0.9 s cooldown) |
 | **F / G / H** | Cast skills: Whirlwind / Fire Nova / Healing Prayer (cost mana, short cooldowns) |
 | **K** | Skill tree — spend skill points (1 per level) across War, Sorcery, and Faith |

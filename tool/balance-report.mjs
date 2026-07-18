@@ -87,6 +87,21 @@ for (const f of [1, 3, 5, 7, 10, 13, 20]) {
 }
 line();
 
+line('## Ambush swarms');
+line();
+const SW = Balance.swarm;
+line(`From floor ${SW.minFloor} on, each eligible room (non-entry, non-boss, ≥ ${SW.minRoomTiles} interior tiles) has a ${Math.round(SW.roomChance * 100)}% chance to hide a swarm, up to ${SW.maxRooms} per floor. Step within ${SW.triggerTiles} tiles of the room center and a pack of swarmlings bursts in from a ${SW.ringMinTiles}–${SW.ringMaxTiles}-tile ring and sprints at you.`);
+line();
+line(`Pack size = min(${SW.packCap}, ${SW.packBase} + rand(0..${SW.packRand}) + floor(${SW.packRate}·(floor−${SW.minFloor}))).`);
+line();
+line('| floor | pack size (min–max) |');
+line('| ---: | --- |');
+for (const f of [Balance.swarm.minFloor, 3, 5, 7, 10, 13, 20]) {
+  const bonus = Math.max(0, Math.floor((f - SW.minFloor) * SW.packRate));
+  line(`| ${f} | ${Math.min(SW.packCap, SW.packBase + bonus)}–${Math.min(SW.packCap, SW.packBase + SW.packRand + bonus)} |`);
+}
+line();
+
 line('## Loot luck');
 line();
 const D = Balance.drops;
