@@ -175,9 +175,12 @@
       return;
     }
 
-    // Ranged: bows loose arrows, wands hurl exploding fireballs.
+    // Ranged: AoE weapons (wand/staff) hurl exploding fireballs; thrown weapons
+    // spin a non-splash projectile; bows/crossbows loose arrows/bolts. The blast is
+    // driven by `stats.aoe`, so any AoE weapon kind explodes without special-casing.
     p.swing = { t: 0, dur: 0.15, facing: p.facing, radius: 24, arc: 0.8, ranged: true };
     const a = p.facing;
+    const projKind = stats.aoe ? 'fireball' : stats.kind === 'thrown' ? 'thrown' : 'arrow';
     state.projectiles.push({
       id: state.nextId++,
       ownerId: p.id,
@@ -186,12 +189,12 @@
       vx: Math.cos(a) * stats.projSpeed,
       vy: Math.sin(a) * stats.projSpeed,
       dmg: rollDamage(state, stats),
-      kind: stats.kind === 'wand' ? 'fireball' : 'arrow',
+      kind: projKind,
       aoe: stats.aoe,
       ttl: 1.8,
       angle: a,
     });
-    G.sfx(state, stats.kind === 'wand' ? 'fireball' : 'bow');
+    G.sfx(state, projKind === 'fireball' ? 'fireball' : 'bow');
   }
   G.playerAttack = playerAttack;
 

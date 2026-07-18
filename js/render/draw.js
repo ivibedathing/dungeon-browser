@@ -105,6 +105,21 @@
         ctx.lineTo(4, 2.5);
         ctx.fill();
         ctx.restore();
+      } else if (pr.kind === 'thrown') {
+        // A tumbling steel weapon: spins independent of flight angle.
+        ctx.save();
+        ctx.translate(pr.x, pr.y);
+        ctx.rotate(state.time * 18 + pr.x * 0.05);
+        ctx.fillStyle = '#8a6b3a';
+        ctx.fillRect(-1.3, -7, 2.6, 14);
+        ctx.fillStyle = '#cfd6dd';
+        ctx.beginPath();
+        ctx.moveTo(-1.3, -7);
+        ctx.lineTo(5, -6);
+        ctx.lineTo(4, -1);
+        ctx.lineTo(-1.3, -2);
+        ctx.fill();
+        ctx.restore();
       } else {
         const fg = ctx.createRadialGradient(pr.x, pr.y, 1, pr.x, pr.y, 11);
         fg.addColorStop(0, '#fff3c0');

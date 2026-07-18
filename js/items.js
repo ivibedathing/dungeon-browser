@@ -27,18 +27,49 @@
 
   // arc in radians (total swing width), kb = knockback impulse; ranged bases fire projectiles.
   // minFloor gates better bases to deeper floors (normal/exceptional/elite tiering).
+  // `family` is the VISUAL archetype (icon + held sprite), decoupled from `kind` (the
+  // combat behavior). Many families share one `kind` — every melee weapon is kind 'melee'
+  // and differs only by stats and family; ranged kinds each fire a projectile variant.
   const WEAPON_BASES = [
-    { base: 'Short Sword', kind: 'melee', dmg: [6, 9], radius: [72, 82], speed: [2.2, 2.6], arc: 2.97, kb: 130 },
-    { base: 'Falchion', kind: 'melee', dmg: [8, 11], radius: [70, 80], speed: [2.0, 2.3], arc: 3.14, kb: 140, minFloor: 2 },
-    { base: 'Broad Sword', kind: 'melee', dmg: [9, 13], radius: [74, 84], speed: [1.9, 2.2], arc: 2.97, kb: 140, minFloor: 3 },
-    { base: 'Estoc', kind: 'melee', dmg: [6, 9], radius: [86, 96], speed: [2.6, 3.0], arc: 2.27, kb: 100, minFloor: 4 },
-    { base: 'Claymore', kind: 'melee', dmg: [14, 19], radius: [80, 92], speed: [1.4, 1.7], arc: 3.84, kb: 190, minFloor: 6 },
-    { base: 'Runeblade', kind: 'melee', dmg: [12, 16], radius: [76, 86], speed: [2.2, 2.5], arc: 2.97, kb: 150, minFloor: 8 },
-    { base: 'Battle Axe', kind: 'melee', dmg: [10, 14], radius: [68, 78], speed: [1.6, 1.9], arc: 3.58, kb: 150 },
-    { base: 'Iron Mace', kind: 'melee', dmg: [8, 12], radius: [64, 74], speed: [1.9, 2.2], arc: 2.62, kb: 250 },
-    { base: 'Spear', kind: 'melee', dmg: [7, 10], radius: [88, 102], speed: [1.8, 2.1], arc: 2.09, kb: 110 },
-    { base: 'Hunting Bow', kind: 'bow', dmg: [5, 8], speed: [1.7, 2.1], projSpeed: [400, 460] },
-    { base: 'Ember Wand', kind: 'wand', dmg: [6, 10], speed: [1.3, 1.6], projSpeed: [280, 330], aoe: [50, 62] },
+    // ---- Swords (family: sword) ----
+    { base: 'Short Sword', family: 'sword', kind: 'melee', dmg: [6, 9], radius: [72, 82], speed: [2.2, 2.6], arc: 2.97, kb: 130 },
+    { base: 'Scimitar', family: 'sword', kind: 'melee', dmg: [8, 11], radius: [72, 82], speed: [2.3, 2.6], arc: 3.05, kb: 130, minFloor: 2 },
+    { base: 'Falchion', family: 'sword', kind: 'melee', dmg: [8, 11], radius: [70, 80], speed: [2.0, 2.3], arc: 3.14, kb: 140, minFloor: 2 },
+    { base: 'Broad Sword', family: 'sword', kind: 'melee', dmg: [9, 13], radius: [74, 84], speed: [1.9, 2.2], arc: 2.97, kb: 140, minFloor: 3 },
+    { base: 'Estoc', family: 'sword', kind: 'melee', dmg: [6, 9], radius: [86, 96], speed: [2.6, 3.0], arc: 2.27, kb: 100, minFloor: 4 },
+    { base: 'Katana', family: 'sword', kind: 'melee', dmg: [12, 16], radius: [82, 92], speed: [2.2, 2.5], arc: 2.8, kb: 130, minFloor: 6 },
+    { base: 'Runeblade', family: 'sword', kind: 'melee', dmg: [12, 16], radius: [76, 86], speed: [2.2, 2.5], arc: 2.97, kb: 150, minFloor: 8 },
+    // ---- Greatswords (family: greatsword) ----
+    { base: 'Claymore', family: 'greatsword', kind: 'melee', dmg: [14, 19], radius: [80, 92], speed: [1.4, 1.7], arc: 3.84, kb: 190, minFloor: 6 },
+    // ---- Daggers (family: dagger) — fast, short reach ----
+    { base: 'Dagger', family: 'dagger', kind: 'melee', dmg: [4, 6], radius: [58, 66], speed: [2.8, 3.2], arc: 2.44, kb: 80 },
+    { base: 'Dirk', family: 'dagger', kind: 'melee', dmg: [6, 9], radius: [60, 68], speed: [2.7, 3.1], arc: 2.44, kb: 90, minFloor: 4 },
+    // ---- Axes (family: axe) ----
+    { base: 'Battle Axe', family: 'axe', kind: 'melee', dmg: [10, 14], radius: [68, 78], speed: [1.6, 1.9], arc: 3.58, kb: 150 },
+    { base: 'Great Axe', family: 'axe', kind: 'melee', dmg: [16, 21], radius: [78, 88], speed: [1.3, 1.6], arc: 3.72, kb: 200, minFloor: 5 },
+    // ---- Maces & hammers (family: mace) — heavy knockback ----
+    { base: 'Iron Mace', family: 'mace', kind: 'melee', dmg: [8, 12], radius: [64, 74], speed: [1.9, 2.2], arc: 2.62, kb: 250 },
+    { base: 'War Hammer', family: 'mace', kind: 'melee', dmg: [15, 20], radius: [66, 76], speed: [1.3, 1.6], arc: 2.79, kb: 300, minFloor: 5 },
+    // ---- Flails (family: flail) ----
+    { base: 'Flail', family: 'flail', kind: 'melee', dmg: [9, 13], radius: [66, 76], speed: [1.8, 2.1], arc: 2.71, kb: 220, minFloor: 2 },
+    { base: 'Morning Star', family: 'flail', kind: 'melee', dmg: [11, 15], radius: [70, 80], speed: [1.7, 2.0], arc: 2.88, kb: 240, minFloor: 4 },
+    // ---- Polearms (family: spear) — long reach, narrow arc ----
+    { base: 'Spear', family: 'spear', kind: 'melee', dmg: [7, 10], radius: [88, 102], speed: [1.8, 2.1], arc: 2.09, kb: 110 },
+    { base: 'Halberd', family: 'spear', kind: 'melee', dmg: [12, 16], radius: [92, 104], speed: [1.6, 1.9], arc: 2.44, kb: 150, minFloor: 5 },
+    { base: 'Glaive', family: 'spear', kind: 'melee', dmg: [13, 17], radius: [90, 100], speed: [1.7, 2.0], arc: 2.62, kb: 140, minFloor: 7 },
+    // ---- Bows (family: bow) ----
+    { base: 'Hunting Bow', family: 'bow', kind: 'bow', dmg: [5, 8], speed: [1.7, 2.1], projSpeed: [400, 460] },
+    { base: 'War Bow', family: 'bow', kind: 'bow', dmg: [8, 12], speed: [1.5, 1.9], projSpeed: [440, 500], minFloor: 5 },
+    // ---- Crossbows (family: crossbow) — slow, hard-hitting bolts ----
+    { base: 'Crossbow', family: 'crossbow', kind: 'crossbow', dmg: [9, 13], speed: [1.2, 1.5], projSpeed: [520, 600], minFloor: 3 },
+    { base: 'Arbalest', family: 'crossbow', kind: 'crossbow', dmg: [13, 18], speed: [1.0, 1.3], projSpeed: [560, 640], minFloor: 7 },
+    // ---- Wands (family: wand) — quick small blasts ----
+    { base: 'Ember Wand', family: 'wand', kind: 'wand', dmg: [6, 10], speed: [1.3, 1.6], projSpeed: [280, 330], aoe: [50, 62] },
+    // ---- Staves (family: staff) — slow, big blasts ----
+    { base: "Sorcerer's Staff", family: 'staff', kind: 'staff', dmg: [9, 14], speed: [1.1, 1.4], projSpeed: [300, 350], aoe: [64, 80], minFloor: 4 },
+    // ---- Thrown (family: thrown) — spinning weapons, no splash ----
+    { base: 'Throwing Axe', family: 'thrown', kind: 'thrown', dmg: [7, 10], speed: [2.0, 2.4], projSpeed: [380, 440], minFloor: 2 },
+    { base: 'Javelin', family: 'thrown', kind: 'thrown', dmg: [9, 13], speed: [1.8, 2.1], projSpeed: [420, 480], minFloor: 4 },
   ];
   // tone = weight-class color painted onto the sprite and icons (leather/mail/plate/bone).
   const ARMOR_BASES = [
@@ -228,6 +259,7 @@
       affixes,
     };
     if (kind) item.kind = kind;
+    if (baseDef.family) item.family = baseDef.family;
     if (baseDef.tone) item.tone = baseDef.tone;
     return item;
   };

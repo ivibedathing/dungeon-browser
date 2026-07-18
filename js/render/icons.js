@@ -3,6 +3,195 @@
   const Render = typeof window !== 'undefined' ? window.Render : require('./core.js');
   const R = Render._;
 
+  // Per-family weapon icons. Each draws around the origin; the caller has already
+  // translated/scaled. Unknown families fall back to 'sword' so old saves still draw.
+  const STEEL = '#b9c2c9';
+  const DARK_STEEL = '#8f98a0';
+  const WOOD = '#7a5b2e';
+  const GOLD = '#d9c06a';
+
+  function drawWeaponIcon(ctx, family) {
+    switch (family) {
+      case 'greatsword':
+        ctx.rotate(-Math.PI / 4);
+        ctx.fillStyle = STEEL;
+        ctx.fillRect(-3, -15, 6, 22);
+        ctx.beginPath();
+        ctx.moveTo(-3, -15);
+        ctx.lineTo(0, -20);
+        ctx.lineTo(3, -15);
+        ctx.fill();
+        ctx.fillStyle = GOLD;
+        ctx.fillRect(-9, 6, 18, 3);
+        ctx.fillStyle = WOOD;
+        ctx.fillRect(-2, 9, 4, 7);
+        break;
+      case 'dagger':
+        ctx.rotate(-Math.PI / 4);
+        ctx.fillStyle = STEEL;
+        ctx.fillRect(-1.6, -8, 3.2, 12);
+        ctx.beginPath();
+        ctx.moveTo(-1.6, -8);
+        ctx.lineTo(0, -12);
+        ctx.lineTo(1.6, -8);
+        ctx.fill();
+        ctx.fillStyle = WOOD;
+        ctx.fillRect(-4.5, 4, 9, 2.5);
+        ctx.fillRect(-1.2, 6.5, 2.4, 4);
+        break;
+      case 'axe':
+        ctx.fillStyle = WOOD; // haft
+        ctx.fillRect(-1.5, -13, 3, 26);
+        ctx.fillStyle = DARK_STEEL; // blade
+        ctx.beginPath();
+        ctx.moveTo(1.5, -12);
+        ctx.quadraticCurveTo(13, -9, 11, -1);
+        ctx.quadraticCurveTo(6, -4, 1.5, -3);
+        ctx.fill();
+        ctx.fillStyle = STEEL;
+        ctx.beginPath();
+        ctx.moveTo(1.5, -12);
+        ctx.quadraticCurveTo(11, -9, 10, -3);
+        ctx.lineTo(1.5, -4);
+        ctx.fill();
+        break;
+      case 'mace':
+        ctx.fillStyle = WOOD;
+        ctx.fillRect(-1.5, -4, 3, 18);
+        ctx.fillStyle = DARK_STEEL;
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(a) * 5, -9 + Math.sin(a) * 5);
+          ctx.lineTo(Math.cos(a) * 8, -9 + Math.sin(a) * 8);
+          ctx.lineTo(Math.cos(a + 0.5) * 5, -9 + Math.sin(a + 0.5) * 5);
+          ctx.fill();
+        }
+        ctx.fillStyle = STEEL;
+        ctx.beginPath();
+        ctx.arc(0, -9, 5.5, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      case 'flail':
+        ctx.fillStyle = WOOD;
+        ctx.fillRect(-1.4, 0, 2.8, 14);
+        ctx.strokeStyle = DARK_STEEL; // chain
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-5, -8);
+        ctx.stroke();
+        ctx.fillStyle = STEEL; // spiked ball
+        ctx.beginPath();
+        ctx.arc(-7, -10, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = DARK_STEEL;
+        for (const [dx, dy] of [[-5, 0], [5, 0], [0, -5], [0, 5]]) {
+          ctx.fillRect(-7 + dx * 1.1 - 0.8, -10 + dy * 1.1 - 0.8, 1.6, 1.6);
+        }
+        break;
+      case 'spear':
+        ctx.rotate(-Math.PI / 4);
+        ctx.fillStyle = WOOD;
+        ctx.fillRect(-1.2, -8, 2.4, 22);
+        ctx.fillStyle = STEEL; // leaf blade
+        ctx.beginPath();
+        ctx.moveTo(0, -17);
+        ctx.quadraticCurveTo(3.5, -12, 0, -8);
+        ctx.quadraticCurveTo(-3.5, -12, 0, -17);
+        ctx.fill();
+        break;
+      case 'bow':
+        ctx.strokeStyle = WOOD;
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.arc(3, 0, 12, Math.PI * 0.55, Math.PI * 1.45);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(230,225,205,0.9)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(3 + Math.cos(Math.PI * 0.55) * 12, Math.sin(Math.PI * 0.55) * 12);
+        ctx.lineTo(3 + Math.cos(Math.PI * 1.45) * 12, Math.sin(Math.PI * 1.45) * 12);
+        ctx.stroke();
+        ctx.strokeStyle = '#c9b37e'; // nocked arrow
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(-7, 0);
+        ctx.lineTo(9, 0);
+        ctx.stroke();
+        break;
+      case 'crossbow':
+        ctx.fillStyle = WOOD; // stock
+        ctx.fillRect(-2, -3, 4, 15);
+        ctx.strokeStyle = DARK_STEEL; // limbs
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, -3, 10, Math.PI * 1.15, Math.PI * 1.85);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(230,225,205,0.9)';
+        ctx.lineWidth = 0.9;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(Math.PI * 1.15) * 10, -3 + Math.sin(Math.PI * 1.15) * 10);
+        ctx.lineTo(Math.cos(Math.PI * 1.85) * 10, -3 + Math.sin(Math.PI * 1.85) * 10);
+        ctx.stroke();
+        ctx.fillStyle = '#c9b37e';
+        ctx.fillRect(-0.8, -12, 1.6, 9);
+        break;
+      case 'wand':
+        ctx.rotate(-Math.PI / 4);
+        ctx.fillStyle = '#5e4470';
+        ctx.fillRect(-1.4, -2, 2.8, 15);
+        ctx.fillStyle = '#ff9a3d';
+        ctx.beginPath();
+        ctx.arc(0, -5, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff3c0';
+        ctx.beginPath();
+        ctx.arc(-1, -6, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      case 'staff':
+        ctx.rotate(-Math.PI / 8);
+        ctx.fillStyle = WOOD;
+        ctx.fillRect(-1.5, -10, 3, 24);
+        ctx.fillStyle = '#6fd0ff';
+        ctx.beginPath();
+        ctx.arc(0, -13, 5.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.beginPath();
+        ctx.arc(-1.6, -14.5, 2, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      case 'thrown':
+        ctx.rotate(-0.4);
+        ctx.fillStyle = WOOD;
+        ctx.fillRect(-1.2, -6, 2.4, 16);
+        ctx.fillStyle = DARK_STEEL;
+        ctx.beginPath();
+        ctx.moveTo(1.2, -6);
+        ctx.quadraticCurveTo(9, -3, 7, 3);
+        ctx.lineTo(1.2, 0);
+        ctx.fill();
+        break;
+      case 'sword':
+      default:
+        ctx.rotate(-Math.PI / 4);
+        ctx.fillStyle = STEEL;
+        ctx.fillRect(-2, -12, 4, 17);
+        ctx.beginPath();
+        ctx.moveTo(-2, -12);
+        ctx.lineTo(0, -16);
+        ctx.lineTo(2, -12);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = WOOD;
+        ctx.fillRect(-6, 5, 12, 3);
+        ctx.fillRect(-1.5, 8, 3, 5);
+        break;
+    }
+  }
+
   function drawItemIcon(ctx, item, x, y, scale) {
     const s = scale || 1;
     ctx.save();
@@ -20,18 +209,7 @@
       ctx.arc(-2, -1, 2.4, 0, Math.PI * 2);
       ctx.fill();
     } else if (item.slot === 'weapon') {
-      ctx.rotate(-Math.PI / 4);
-      ctx.fillStyle = '#b9c2c9';
-      ctx.fillRect(-2, -12, 4, 17);
-      ctx.beginPath();
-      ctx.moveTo(-2, -12);
-      ctx.lineTo(0, -16);
-      ctx.lineTo(2, -12);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = '#7a5b2e';
-      ctx.fillRect(-6, 5, 12, 3);
-      ctx.fillRect(-1.5, 8, 3, 5);
+      drawWeaponIcon(ctx, item.family || 'sword');
     } else if (item.slot === 'armor') {
       ctx.fillStyle = item.tone || '#8a94a0';
       ctx.beginPath();

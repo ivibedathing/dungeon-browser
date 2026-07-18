@@ -46,8 +46,9 @@ test('makeItem produces valid items with rarity-appropriate affix counts', () =>
     if (item.slot === 'weapon') {
       assert.ok(item.stats.damage > 0);
       assert.ok(item.stats.speed > 0);
+      assert.ok(typeof item.family === 'string' && item.family.length > 0, 'weapon has a family');
       if (item.kind === 'melee') {
-        assert.ok(item.stats.radius >= 60, `radius ${item.stats.radius}`);
+        assert.ok(item.stats.radius >= 55, `radius ${item.stats.radius}`); // daggers reach ~58
       } else {
         assert.ok(item.stats.projSpeed >= 200, `projSpeed ${item.stats.projSpeed}`);
       }

@@ -13,6 +13,7 @@
   E.starterWeapon = () => ({
     slot: 'weapon',
     base: 'Short Sword',
+    family: 'sword',
     name: 'Rusty Sword',
     rarity: 'common',
     color: Items.RARITIES.common.color,

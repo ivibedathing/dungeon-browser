@@ -43,6 +43,50 @@ function freshInput() {
   };
 }
 
+// Every weapon family must draw both as an inventory icon and as a held sprite,
+// and thrown weapons must draw their in-flight projectile — none may throw.
+const WEAPON_FAMILIES = [
+  { family: 'sword', kind: 'melee' },
+  { family: 'greatsword', kind: 'melee' },
+  { family: 'dagger', kind: 'melee' },
+  { family: 'axe', kind: 'melee' },
+  { family: 'mace', kind: 'melee' },
+  { family: 'flail', kind: 'melee' },
+  { family: 'spear', kind: 'melee' },
+  { family: 'bow', kind: 'bow' },
+  { family: 'crossbow', kind: 'crossbow' },
+  { family: 'wand', kind: 'wand' },
+  { family: 'staff', kind: 'staff' },
+  { family: 'thrown', kind: 'thrown' },
+];
+
+test('every weapon family draws as an icon and a held sprite without crashing', () => {
+  const ctx = makeCtx();
+  // Icons: one item per family, at a couple of rarities.
+  for (const { family, kind } of WEAPON_FAMILIES) {
+    for (const rarity of ['common', 'unique']) {
+      const item = { slot: 'weapon', family, kind, color: Items.RARITIES[rarity].color, rarity };
+      Render.drawItemIcon(ctx, item, 100, 100, 1);
+    }
+  }
+  // Held sprites + projectiles: equip each family and swing next to a target.
+  const view = { w: 800, h: 600 };
+  for (const { family, kind } of WEAPON_FAMILIES) {
+    let state = Game.newRun(3);
+    state.monsters.length = 0;
+    const p = state.player;
+    p.equip.weapon = { slot: 'weapon', family, kind, color: '#e8e2d6', rarity: 'common', ilvl: 1, affixes: [], stats: Items.makeItem(1, U.mulberry32(1), { slot: 'weapon', kind }).stats };
+    const input = freshInput();
+    input.keys.space = true;
+    p.facing = 0;
+    for (let i = 0; i < 20; i++) {
+      state = Game.update(state, input, 1 / 60);
+      Render.draw(ctx, state, view);
+      input.pressed.clear();
+    }
+  }
+});
+
 test('full frame pipeline draws every entity/UI state without crashing', () => {
   const ctx = makeCtx();
   const view = { w: 1280, h: 800 };
