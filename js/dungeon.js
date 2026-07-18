@@ -175,6 +175,92 @@
     a.y - 1 < b.y + b.h + 1 &&
     a.y + a.h + 1 > b.y - 1;
 
+  const centerDist = (a, b) => Math.hypot(a.cx - b.cx, a.cy - b.cy);
+  const edgeKey = (n, i, j) => Math.min(i, j) * n + Math.max(i, j);
+
+  // Link every room to a geometric neighbour via a minimum spanning tree over room
+  // centres (Prim, O(n²) — fine for <100 rooms). Rooms used to be chained in
+  // *placement* order, which is random, so consecutive rooms sat at opposite ends of
+  // the map and each link carved a corridor clean across the floor. Dozens of those
+  // slashes is what made a floor read as noise with no sense of direction. An MST
+  // keeps every corridor short and local, so the floor grows as a connected web of
+  // neighbourhoods, and its leaves become honest dead ends.
+  //
+  // Weights get mild per-edge jitter so two seeds don't converge on the same skeleton.
+  // Returns the adjacency list, which the caller walks to find the critical path.
+  function spanRooms(grid, rooms, rng) {
+    const n = rooms.length;
+    const adj = Array.from({ length: n }, () => []);
+    if (n < 2) return adj;
+    const inTree = new Array(n).fill(false);
+    const best = new Array(n).fill(Infinity);
+    const parent = new Array(n).fill(-1);
+    best[0] = 0;
+    for (let it = 0; it < n; it++) {
+      let u = -1;
+      for (let i = 0; i < n; i++) if (!inTree[i] && (u < 0 || best[i] < best[u])) u = i;
+      inTree[u] = true;
+      if (parent[u] >= 0) {
+        carveCorridor(grid, rooms[u], rooms[parent[u]], rng);
+        adj[u].push(parent[u]);
+        adj[parent[u]].push(u);
+      }
+      for (let v = 0; v < n; v++) {
+        if (inTree[v]) continue;
+        const w = centerDist(rooms[u], rooms[v]) * (0.85 + 0.3 * rng());
+        if (w < best[v]) {
+          best[v] = w;
+          parent[v] = u;
+        }
+      }
+    }
+    return adj;
+  }
+
+  // Extra links so the floor isn't a pure tree. Only rooms that are already close
+  // qualify: a loop should be a shortcut you notice between two neighbouring
+  // chambers, not another corridor teleporting across the map.
+  function addLoops(grid, rooms, adj, rng, count, radius) {
+    const n = rooms.length;
+    const linked = new Set();
+    for (let i = 0; i < n; i++) for (const j of adj[i]) linked.add(edgeKey(n, i, j));
+    const cands = [];
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        if (linked.has(edgeKey(n, i, j))) continue;
+        if (centerDist(rooms[i], rooms[j]) <= radius) cands.push([i, j]);
+      }
+    }
+    const want = Math.min(count, cands.length);
+    for (let k = 0; k < want; k++) {
+      const [i, j] = cands.splice(U.randInt(rng, 0, cands.length - 1), 1)[0];
+      carveCorridor(grid, rooms[i], rooms[j], rng);
+      adj[i].push(j);
+      adj[j].push(i);
+    }
+  }
+
+  // BFS over the room graph from room 0 (the entry). `depth` is how many rooms deep
+  // each chamber sits along the shortest route in — the floor's sense of progression
+  // hangs off this: the stairs go at the deepest room, and the chain of rooms leading
+  // there gets flagged as the critical path.
+  function roomDepths(adj, n) {
+    const depth = new Array(n).fill(Infinity);
+    const from = new Array(n).fill(-1);
+    depth[0] = 0;
+    const q = [0];
+    for (let head = 0; head < q.length; head++) {
+      const u = q[head];
+      for (const v of adj[u]) {
+        if (depth[v] !== Infinity) continue;
+        depth[v] = depth[u] + 1;
+        from[v] = u;
+        q.push(v);
+      }
+    }
+    return { depth, from };
+  }
+
   D.generateDungeon = function (seed, floor) {
     // 120x120 — four times the area of the old 60x60 floors.
     const W = 120;
@@ -209,35 +295,84 @@
       rooms.push(room);
     }
 
-    // Connect each room to the previous one, then add loop corridors.
-    for (let i = 1; i < rooms.length; i++) carveCorridor(grid, rooms[i], rooms[i - 1], rng);
-    for (let k = 0; k < (deep ? 24 : 12) && rooms.length > 3; k++) {
-      const i = U.randInt(rng, 0, rooms.length - 1);
-      const j = U.randInt(rng, 0, rooms.length - 1);
-      if (i !== j) carveCorridor(grid, rooms[i], rooms[j], rng);
+    // The floor starts in a corner rather than wherever the placement loop happened to
+    // put its first room, so the run has a direction: you enter at one edge and work
+    // inward. The entry room is moved to index 0 — the spawn, prop and ambush passes
+    // below all skip index 0 to keep the arrival chamber quiet.
+    const corner = [
+      { cx: 6, cy: 6 },
+      { cx: W - 7, cy: 6 },
+      { cx: 6, cy: H - 7 },
+      { cx: W - 7, cy: H - 7 },
+    ][U.randInt(rng, 0, 3)];
+    // Arrival wants a proper hall, not whichever closet happens to sit nearest the
+    // corner: a room with at least 4 tiles of clear floor around its centre, so you
+    // can see and move before anything reaches you. Deep floors are built from small
+    // chambers and may have nothing that roomy, so the bar drops to the largest rooms
+    // on offer, then to anything at all.
+    const roomy = (min) => rooms.filter((r) => !r.cavern && r.w >= min && r.h >= min);
+    let pool = roomy(9);
+    if (!pool.length) {
+      const plain = rooms.filter((r) => !r.cavern);
+      pool = (plain.length ? plain : rooms).slice().sort((a, b) => b.w * b.h - a.w * a.h).slice(0, 8);
     }
-
-    // Entry in the first room; stairs down in the BFS-farthest room.
-    const entry = { x: rooms[0].cx, y: rooms[0].cy };
-    const dist = D.flowField(grid, entry.x, entry.y, Infinity);
-    let stairs = null;
-    let best = -1;
-    for (let i = 1; i < rooms.length; i++) {
-      if (rooms[i].cavern) continue; // stairs and the arena need a true rectangle
-      const d = dist[rooms[i].cy][rooms[i].cx];
-      if (d !== Infinity && d > best) {
-        best = d;
-        stairs = { x: rooms[i].cx, y: rooms[i].cy };
+    let entryRoom = pool[0];
+    let entryBest = Infinity;
+    for (const r of pool) {
+      const d = centerDist(r, corner);
+      if (d < entryBest) {
+        entryBest = d;
+        entryRoom = r;
       }
     }
-    if (!stairs) stairs = { x: rooms[rooms.length - 1].cx, y: rooms[rooms.length - 1].cy };
+    const entryIdx = rooms.indexOf(entryRoom);
+    [rooms[0], rooms[entryIdx]] = [rooms[entryIdx], rooms[0]];
+
+    // Connect neighbours into a spanning web, then thread in a few local shortcuts.
+    const adj = spanRooms(grid, rooms, rng);
+    addLoops(grid, rooms, adj, rng, deep ? 24 : 12, deep ? 18 : 24);
+
+    const { depth, from } = roomDepths(adj, rooms.length);
+    for (let i = 0; i < rooms.length; i++) rooms[i].depth = depth[i] === Infinity ? 0 : depth[i];
+
+    // Stairs go at the room that is deepest along the room graph — the far end of the
+    // longest route in, not merely the farthest tile. Ties break on straight-line
+    // distance, and we insist on real distance from the entry so a compact floor can
+    // never open the stairs next door.
+    const entry = { x: rooms[0].cx, y: rooms[0].cy };
+    let stairsIdx = -1;
+    let bestScore = -1;
+    for (const minGap of [18, 0]) {
+      for (let i = 1; i < rooms.length; i++) {
+        if (rooms[i].cavern) continue; // stairs and the arena need a true rectangle
+        if (depth[i] === Infinity) continue;
+        const gap = centerDist(rooms[i], rooms[0]);
+        if (gap < minGap) continue;
+        const score = depth[i] * 1000 + gap;
+        if (score > bestScore) {
+          bestScore = score;
+          stairsIdx = i;
+        }
+      }
+      if (stairsIdx >= 0) break;
+    }
+    if (stairsIdx < 0) stairsIdx = rooms.length - 1;
+    let stairs = { x: rooms[stairsIdx].cx, y: rooms[stairsIdx].cy };
+
+    // Walk the BFS parents back from the stairs: these are the rooms the player must
+    // pass through. Lighting leans on this below, so the route out reads as a route.
+    for (let i = stairsIdx; i >= 0; i = from[i]) {
+      rooms[i].onPath = true;
+      if (from[i] < 0) break;
+    }
+
     grid[entry.y][entry.x] = D.TILE.ENTRY;
     grid[stairs.y][stairs.x] = D.TILE.STAIRS_DOWN;
 
     // Every second floor, the farthest room becomes a boss arena guarding the stairs.
     let boss = null;
     if (floor % 2 === 0) {
-      const bossRoom = rooms.find((r) => r.cx === stairs.x && r.cy === stairs.y) || rooms[rooms.length - 1];
+      const bossRoom = rooms[stairsIdx];
       grid[stairs.y][stairs.x] = D.TILE.FLOOR;
       stairs = { x: bossRoom.x + bossRoom.w - 2, y: bossRoom.cy };
       grid[stairs.y][stairs.x] = D.TILE.STAIRS_DOWN;
@@ -248,15 +383,18 @@
       };
     }
 
-    // Torches on walls hugging room perimeters.
+    // Torches on walls hugging room perimeters. Rooms on the critical path are lit
+    // roughly twice as densely, so brightness is a soft breadcrumb toward the stairs
+    // and the unlit branches read as side rooms worth a detour.
     const torches = [];
     for (const r of rooms) {
+      const lit = r.onPath ? 2 : 1;
       for (let x = r.x; x < r.x + r.w; x++) {
-        if (grid[r.y - 1][x] === D.TILE.WALL && rng() < 0.12) torches.push({ x, y: r.y - 1 });
+        if (grid[r.y - 1][x] === D.TILE.WALL && rng() < 0.12 * lit) torches.push({ x, y: r.y - 1 });
       }
       for (let y = r.y; y < r.y + r.h; y++) {
-        if (grid[y][r.x - 1] === D.TILE.WALL && rng() < 0.08) torches.push({ x: r.x - 1, y });
-        if (grid[y][r.x + r.w] === D.TILE.WALL && rng() < 0.08) torches.push({ x: r.x + r.w, y });
+        if (grid[y][r.x - 1] === D.TILE.WALL && rng() < 0.08 * lit) torches.push({ x: r.x - 1, y });
+        if (grid[y][r.x + r.w] === D.TILE.WALL && rng() < 0.08 * lit) torches.push({ x: r.x + r.w, y });
       }
     }
 
@@ -267,7 +405,8 @@
     for (let ri = 1; ri < rooms.length; ri++) {
       const room = rooms[ri];
       if (boss && room.x === boss.room.x && room.y === boss.room.y) continue; // the arena belongs to the boss
-      const count = SP.base + U.randInt(rng, 0, SP.rand) + depthBonus;
+      const roomBonus = Math.min(SP.roomCap, Math.floor(room.depth * SP.roomRate));
+      const count = SP.base + U.randInt(rng, 0, SP.rand) + depthBonus + roomBonus;
       for (let k = 0; k < count; k++) {
         for (let t = 0; t < 20; t++) {
           const x = U.randInt(rng, room.x + 1, room.x + room.w - 2);
