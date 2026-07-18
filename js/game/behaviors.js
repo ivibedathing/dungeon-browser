@@ -17,7 +17,7 @@
   // damage the player experiences as unfair, so the telegraph is broadcast state
   // (m.telegraph) that renderers and net snapshots can both see.
   G.BEHAVIORS.slam = function slam(state, m, dt, ctx) {
-    const { p, dist, mr } = ctx;
+    const { p, dist } = ctx;
     m.slamCdT = Math.max(0, (m.slamCdT || 0) - dt);
 
     // Mid-windup: rooted, committed, and aimed at where the player *was*.
@@ -61,7 +61,6 @@
 
     // Otherwise close the distance like anything else.
     G.chaseStep(state, m, dt, ctx);
-    void mr;
   };
 
   // ---- caster: keeps its distance and throws ----
@@ -75,7 +74,7 @@
       // Too close — back off along the straight line away from the hero. No flow
       // field in reverse, so this can corner itself; that is a fair weakness.
       const a = Math.atan2(m.y - p.y, m.x - p.x);
-      const v = m.speed * Entities.statusMoveMult(m) * 0.9 * dt;
+      const v = m.speed * Entities.statusMoveMult(m) * (m.speedMult || 1) * 0.9 * dt;
       const moved = G.moveCircle(state.dungeon.grid, m.x, m.y, mr, Math.cos(a) * v, Math.sin(a) * v);
       m.x = moved.x;
       m.y = moved.y;

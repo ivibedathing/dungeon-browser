@@ -145,8 +145,42 @@
     }
     G.floatText(state, m.x, m.y - m.size - 6, `${dmg}`, '#ffe9b0', m.champion ? 16 : 14);
     G.burst(state, m.x, m.y, '#a3232e', 7, 110);
-    if (m.hp <= 0) killMonster(state, m, stats, killer || state.player);
+    if (m.hp <= 0) {
+      killMonster(state, m, stats, killer || state.player);
+      return;
+    }
+    // Phase transitions are evaluated HERE, at the one place HP ever drops, and
+    // not in the AI tick. A burst that crosses two thresholds in a single frame
+    // must fire both; an AI-tick check would only ever see the final HP and
+    // silently skip the phases in between.
+    if (m.phases) G.advancePhases(state, m);
   }
+
+  // Fire every threshold the boss has dropped past, in order, at most once each.
+  G.advancePhases = function advancePhases(state, m) {
+    const frac = m.hp / (m.maxHP || m.hp);
+    if (m.phaseIdx === undefined) m.phaseIdx = 0;
+    while (m.phaseIdx < m.phases.length && frac <= m.phases[m.phaseIdx].at) {
+      const ph = m.phases[m.phaseIdx];
+      m.phaseIdx++;
+      // Behavior and its tuning fields are copied onto the monster so the
+      // dispatch in ai.js needs to know nothing about phases.
+      for (const k of Object.keys(ph)) {
+        if (k === 'at' || k === 'onEnterSummon' || k === 'message') continue;
+        m[k] = ph[k];
+      }
+      m.telegraphT = 0;
+      m.telegraph = null;
+      if (ph.onEnterSummon) {
+        G.summonAdds(state, m, ph.onEnterSummon.type, ph.onEnterSummon.count, ph.onEnterSummon.cap);
+      }
+      state.shake = Math.min(12, state.shake + 6);
+      G.burst(state, m.x, m.y, '#ffd84d', 22, 180);
+      G.sfx(state, 'levelup');
+      if (ph.message) G.message(state, ph.message, '#ff9a3d');
+      else if (m.name) G.message(state, `${m.name} changes its stance!`, '#ff9a3d');
+    }
+  };
 
   function rollDamage(state, stats) {
     return Math.max(1, Math.round(stats.damage * (0.85 + state.srand() * 0.3)));
@@ -251,6 +285,7 @@
               G.floatText(state, pl.x, pl.y - 24, `-${dmg}`, '#ff5c4d', 15);
               G.burst(state, pl.x, pl.y, '#c03a2b', 6, 100);
               G.sfx(state, 'hurt');
+              if (pr.burn > 0) G.applyStatus(pl, 'burn', pr.burnDur || 3, { dps: pr.burn, src: null });
             }
             break;
           }

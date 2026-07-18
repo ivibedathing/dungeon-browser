@@ -61,7 +61,7 @@
         if (state.srand() < 0.4) m.wandA = NaN; // stand still
       }
       if (!Number.isNaN(m.wandA)) {
-        const v = m.speed * Entities.statusMoveMult(m) * 0.35 * dt;
+        const v = m.speed * Entities.statusMoveMult(m) * (m.speedMult || 1) * 0.35 * dt;
         const moved = G.moveCircle(state.dungeon.grid, m.x, m.y, mr, Math.cos(m.wandA) * v, Math.sin(m.wandA) * v);
         m.x = moved.x;
         m.y = moved.y;
@@ -113,7 +113,7 @@
   // The shared approach step: descend the BFS flow field toward the target,
   // steering straight once adjacent, with boid separation so packs don't stack.
   // Every behavior that needs to close distance goes through this one copy.
-  G.chaseStep = function chaseStep(state, m, dt, ctx, speedMult) {
+  G.chaseStep = function chaseStep(state, m, dt, ctx) {
     const { p, dist, mr, flow, flowDist, mtx, mty } = ctx;
     // Chase: descend the BFS flow field; steer straight when adjacent-tile close.
     let targetX = null;
@@ -161,7 +161,7 @@
       }
     }
     const alen = Math.hypot(ax, ay) || 1;
-    const v = (m.speed * Entities.statusMoveMult(m) * (speedMult === undefined ? 1 : speedMult) * dt) / alen;
+    const v = (m.speed * Entities.statusMoveMult(m) * (m.speedMult || 1) * dt) / alen;
     const moved = G.moveCircle(state.dungeon.grid, m.x, m.y, mr, ax * v, ay * v);
     m.x = moved.x;
     m.y = moved.y;

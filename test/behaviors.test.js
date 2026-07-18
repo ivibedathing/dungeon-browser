@@ -183,3 +183,19 @@ test('behaviors draw only from the seeded RNG: same seed, same fight', () => {
   };
   assert.deepEqual(play(), play(), 'two runs of the same seed agree exactly');
 });
+
+test('a caster with castBurn actually sets the hero alight', () => {
+  let state = Game.newRun(89);
+  state.monsters.length = 0;
+  state.player.baseMaxHP = 100000; state.player.hp = 100000;
+  const m = mk(state, 'wraith', 200, 0, true, { behavior: 'caster', castRange: 400, castCd: 0.5, castDmg: 4, castSpeed: 300, keepAway: 180, castBurn: 6 });
+  state.monsters.push(m);
+  let burned = false;
+  const input = freshInput();
+  for (let i = 0; i < 200; i++) {
+    state = Game.update(state, input, 1 / 60);
+    Game.applyEvents(state, Game.drainEvents(state));
+    if (G.hasStatus(state.player, 'burn')) burned = true;
+  }
+  assert.ok(burned, 'the bolt applied its burn on contact');
+});
