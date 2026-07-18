@@ -47,7 +47,24 @@
 
   Balance.champion = { hp: 2.6, dmg: 1.5, xp: 3, size: 1.35, speed: 1.05 };
 
+  // The unnamed guardian on arena floors no act claims (2, 6, 10, 14, 18, 22).
   Balance.boss = { hp: 8, dmg: 2, xp: 10, size: 2.1, speed: 0.95, aggro: 420, attackRange: 46, attackCd: 1.5, kbResist: 0.15 };
+
+  // Named act bosses, indexed by act (1-6). HP sits just above the generic
+  // guardian's ×8 — an act boss must be the hardest thing on its own floor — but
+  // the *escalation* across acts is deliberately carried by damage and mechanics
+  // (telegraphs, phase ladders, adds) rather than by hp. A boss with triple hp
+  // and one wind-up attack is a boss you dodge correctly for four minutes, which
+  // reads as tedium rather than threat. Same reasoning as the hpQuad/dmgLin
+  // split in Balance.scaling: depth rides on damage, not on time-to-kill.
+  Balance.actBoss = {
+    1: { hp: 8.2, dmg: 2.1, xp: 14, size: 2.0 },
+    2: { hp: 8.4, dmg: 2.2, xp: 16, size: 2.05 },
+    3: { hp: 8.6, dmg: 2.3, xp: 18, size: 2.1 },
+    4: { hp: 8.8, dmg: 2.4, xp: 20, size: 2.15 },
+    5: { hp: 9.2, dmg: 2.5, xp: 24, size: 2.2 },
+    6: { hp: 11.0, dmg: 2.7, xp: 40, size: 2.5 }, // the final boss earns its sponge
+  };
 
   // ---- Loot luck ----
   // Per kill: gold / potion / item are exclusive rolls in that order; the rest drop nothing.

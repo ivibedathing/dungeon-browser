@@ -27,10 +27,18 @@ test('monster stats derive from the Balance table and scaling curves', () => {
     const plain = Entities.makeMonster(type, 5, false);
     assert.equal(champ.hp, Math.round(plain.hp * Balance.champion.hp), `${type} champion multiplier wired`);
   }
-  const boss = Entities.makeBoss(4);
-  const stock = Entities.makeMonster('brute', 4, false);
-  assert.equal(boss.hp, Math.round(stock.hp * Balance.boss.hp), 'boss hp wired');
-  assert.equal(boss.kbResist, Balance.boss.kbResist, 'boss knockback wired');
+  // Two boss classes now read two tables: named act bosses (floors 4/8/12/16/20/24)
+  // scale from Balance.actBoss[act], the generic guardians on the other arena
+  // floors from Balance.boss. Both share the guardian's combat feel (kbResist).
+  const actBoss = Entities.makeBoss(4);
+  const actStock = Entities.makeMonster('brute', 4, false);
+  assert.equal(actBoss.hp, Math.round(actStock.hp * Balance.actBoss[1].hp), 'act boss hp wired');
+  assert.equal(actBoss.kbResist, Balance.boss.kbResist, 'act boss knockback wired');
+
+  const guard = Entities.makeBoss(6);
+  const guardStock = Entities.makeMonster('brute', 6, false);
+  assert.equal(guard.hp, Math.round(guardStock.hp * Balance.boss.hp), 'generic guardian hp wired');
+  assert.equal(guard.kbResist, Balance.boss.kbResist, 'generic guardian knockback wired');
 });
 
 test('dropLoot honors the Balance drop rates statistically', () => {

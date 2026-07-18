@@ -37,7 +37,20 @@ XP to next level = round(100 × level^1.62); monster XP × (1 + 0.22·(floor−1
 
 Scaling: HP ×(1 + 0.3·(f−1) + 0.006·(f−1)²) · damage ×(1 + 0.42·(f−1)).
 Champions: ×2.6 HP, ×1.5 damage, ×3 XP (12% of spawns, min 1 from floor 3).
-Bosses (every 2nd floor, brute stock): ×8 HP, ×2 damage, ×10 XP, knockback ×0.15.
+Generic guardians (arena floors 2/6/10/14/18/22 and every even floor past 24, brute stock): ×8 HP, ×2 damage, ×10 XP, knockback ×0.15.
+
+### Act bosses (the main quest)
+
+Six named bosses close the six acts. All scale from brute stock on their floor and share the guardian combat feel (aggro, reach, knockback resist); escalation across acts is carried by damage and mechanics rather than by HP.
+
+| act | title | floor | boss | HP | damage | XP | phases |
+| ---: | --- | ---: | --- | ---: | ---: | ---: | ---: |
+| 1 | The Crypts | 4 | Gravemaw | ×8.2 | ×2.1 | ×14 | 1 |
+| 2 | The Caverns | 8 | The Hollow Choir | ×8.4 | ×2.2 | ×16 | 2 |
+| 3 | The Warrens | 12 | The Warden of Ash | ×8.6 | ×2.3 | ×18 | 2 |
+| 4 | The Deep | 16 | Thessaly Coldspine | ×8.8 | ×2.4 | ×20 | 2 |
+| 5 | The Under-Deep | 20 | Vexis the Unmourned | ×9.2 | ×2.5 | ×24 | 3 |
+| 6 | The Sanctum | 24 (final) | Duromar | ×11 | ×2.7 | ×40 | 4 |
 
 ### zombie — base 38 hp / 8 dmg / 14 xp · speed 55 · aggro 265px
 
@@ -128,13 +141,13 @@ Bosses (every 2nd floor, brute stock): ×8 HP, ×2 damage, ×10 XP, knockback ×
 | floor | hp | dmg | xp |
 | ---: | ---: | ---: | ---: |
 | 2 | 712 | 42 | 320 |
-| 4 | 1064 | 68 | 430 |
+| 4 | 1091 | 71 | 602 |
 | 6 | 1440 | 94 | 550 |
-| 8 | 1848 | 118 | 660 |
+| 8 | 1940 | 130 | 1056 |
 | 10 | 2280 | 144 | 770 |
-| 12 | 2736 | 168 | 890 |
-| 16 | 3728 | 220 | 1120 |
-| 20 | 4824 | 270 | 1350 |
+| 12 | 2941 | 193 | 1602 |
+| 16 | 4101 | 264 | 2240 |
+| 20 | 5548 | 338 | 3240 |
 
 ## Dungeon population
 
