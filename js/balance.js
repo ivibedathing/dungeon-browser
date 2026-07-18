@@ -35,7 +35,15 @@
 
   // Per-floor scaling: hp ×(1 + hpLin·(f−1) + hpQuad·(f−1)²), dmg ×(1 + dmgLin·(f−1)),
   // xp ×(1 + xpLin·(f−1)).
-  Balance.scaling = { hpLin: 0.38, hpQuad: 0.035, dmgLin: 0.28, xpLin: 0.22 };
+  //
+  // Depth difficulty rides on DAMAGE, not HP. The player's own damage grows
+  // roughly linearly (weapon ×(1 + 0.22·(f−1)), +2 base/level, skill mults capped
+  // at ×1.4), so an HP curve steeper than that only stretches time-to-kill — deep
+  // floors read as tedious rather than dangerous. hpQuad stays small so depth
+  // still compounds a little without outrunning the player's clear rate; dmgLin
+  // carries the threat, outpacing the armor curve (×(1 + 0.18·(f−1))) so defense
+  // softens hits at depth without neutralizing them.
+  Balance.scaling = { hpLin: 0.3, hpQuad: 0.006, dmgLin: 0.42, xpLin: 0.22 };
 
   Balance.champion = { hp: 2.6, dmg: 1.5, xp: 3, size: 1.35, speed: 1.05 };
 
