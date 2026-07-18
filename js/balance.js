@@ -56,7 +56,15 @@
 
   // Per-floor scaling: hp ×(1 + hpLin·(f−1) + hpQuad·(f−1)²), dmg ×(1 + dmgLin·(f−1)),
   // xp ×(1 + xpLin·(f−1)).
-  Balance.scaling = { hpLin: 0.38, hpQuad: 0.035, dmgLin: 0.28, xpLin: 0.22 };
+  //
+  // Depth difficulty rides on DAMAGE, not HP. The player's own damage grows
+  // roughly linearly (weapon ×(1 + 0.22·(f−1)), +2 base/level, skill mults capped
+  // at ×1.4), so an HP curve steeper than that only stretches time-to-kill — deep
+  // floors read as tedious rather than dangerous. hpQuad stays small so depth
+  // still compounds a little without outrunning the player's clear rate; dmgLin
+  // carries the threat, outpacing the armor curve (×(1 + 0.18·(f−1))) so defense
+  // softens hits at depth without neutralizing them.
+  Balance.scaling = { hpLin: 0.3, hpQuad: 0.006, dmgLin: 0.42, xpLin: 0.22 };
 
   // ---- Behavior tuning (Phase 4) ----
   // Telegraph windows are deliberately generous so every special is dodgeable. All
@@ -150,7 +158,7 @@
   };
 
   // ---- Blacksmith ----
-  Balance.upgrade = { dmgPerPlus: 0.08, maxPlus: 10 };
+  Balance.upgrade = { dmgPerPlus: 0.08, defPerPlus: 0.08, maxPlus: 10 };
 
   // ---- Quest board ----
   // Rewards are priced in "work units", where one unit ≈ killing a floor-1

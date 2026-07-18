@@ -35,7 +35,7 @@ XP to next level = round(100 × level^1.62); monster XP × (1 + 0.22·(floor−1
 
 ## Monsters per floor
 
-Scaling: HP ×(1 + 0.38·(f−1) + 0.035·(f−1)²) · damage ×(1 + 0.28·(f−1)).
+Scaling: HP ×(1 + 0.3·(f−1) + 0.006·(f−1)²) · damage ×(1 + 0.42·(f−1)).
 Champions: ×2.6 HP, ×1.5 damage, ×3 XP (12% of spawns, min 1 from floor 3).
 Bosses (every 2nd floor, brute stock): ×8 HP, ×2 damage, ×10 XP, knockback ×0.15.
 
@@ -44,70 +44,70 @@ Bosses (every 2nd floor, brute stock): ×8 HP, ×2 damage, ×10 XP, knockback ×
 | floor | hp | dmg | xp | champion hp/dmg |
 | ---: | ---: | ---: | ---: | --- |
 | 1 | 38 | 8 | 14 | 99 / 12 |
-| 2 | 54 | 10 | 17 | 140 / 15 |
-| 4 | 93 | 15 | 23 | 242 / 23 |
-| 6 | 143 | 19 | 29 | 372 / 29 |
-| 8 | 204 | 24 | 36 | 530 / 36 |
-| 10 | 276 | 28 | 42 | 718 / 42 |
-| 12 | 358 | 33 | 48 | 931 / 50 |
-| 15 | 501 | 39 | 57 | 1303 / 59 |
-| 20 | 792 | 51 | 73 | 2059 / 77 |
+| 2 | 50 | 11 | 17 | 130 / 17 |
+| 4 | 74 | 18 | 23 | 192 / 27 |
+| 6 | 101 | 25 | 29 | 263 / 38 |
+| 8 | 129 | 32 | 36 | 335 / 48 |
+| 10 | 159 | 38 | 42 | 413 / 57 |
+| 12 | 191 | 45 | 48 | 497 / 68 |
+| 15 | 242 | 55 | 57 | 629 / 83 |
+| 20 | 337 | 72 | 73 | 876 / 108 |
 
 ### skeleton — base 27 hp / 7 dmg / 12 xp · speed 78 · aggro 300px
 
 | floor | hp | dmg | xp | champion hp/dmg |
 | ---: | ---: | ---: | ---: | --- |
 | 1 | 27 | 7 | 12 | 70 / 11 |
-| 2 | 38 | 9 | 15 | 99 / 14 |
-| 4 | 66 | 13 | 20 | 172 / 20 |
-| 6 | 102 | 17 | 25 | 265 / 26 |
-| 8 | 145 | 21 | 30 | 377 / 32 |
-| 10 | 196 | 25 | 36 | 510 / 38 |
-| 12 | 254 | 29 | 41 | 660 / 44 |
-| 15 | 356 | 34 | 49 | 926 / 51 |
-| 20 | 563 | 44 | 62 | 1464 / 66 |
+| 2 | 35 | 10 | 15 | 91 / 15 |
+| 4 | 53 | 16 | 20 | 138 / 24 |
+| 6 | 72 | 22 | 25 | 187 / 33 |
+| 8 | 92 | 28 | 30 | 239 / 42 |
+| 10 | 113 | 33 | 36 | 294 / 50 |
+| 12 | 136 | 39 | 41 | 354 / 59 |
+| 15 | 172 | 48 | 49 | 447 / 72 |
+| 20 | 239 | 63 | 62 | 621 / 95 |
 
 ### bat — base 15 hp / 5 dmg / 9 xp · speed 108 · aggro 345px
 
 | floor | hp | dmg | xp | champion hp/dmg |
 | ---: | ---: | ---: | ---: | --- |
 | 1 | 15 | 5 | 9 | 39 / 8 |
-| 2 | 21 | 6 | 11 | 55 / 9 |
-| 4 | 37 | 9 | 15 | 96 / 14 |
-| 6 | 57 | 12 | 19 | 148 / 18 |
-| 8 | 81 | 15 | 23 | 211 / 23 |
-| 10 | 109 | 18 | 27 | 283 / 27 |
-| 12 | 141 | 20 | 31 | 367 / 30 |
-| 15 | 198 | 25 | 37 | 515 / 38 |
-| 20 | 313 | 32 | 47 | 814 / 48 |
+| 2 | 20 | 7 | 11 | 52 / 11 |
+| 4 | 29 | 11 | 15 | 75 / 17 |
+| 6 | 40 | 16 | 19 | 104 / 24 |
+| 8 | 51 | 20 | 23 | 133 / 30 |
+| 10 | 63 | 24 | 27 | 164 / 36 |
+| 12 | 75 | 28 | 31 | 195 / 42 |
+| 15 | 96 | 34 | 37 | 250 / 51 |
+| 20 | 133 | 45 | 47 | 346 / 68 |
 
 ### brute — base 68 hp / 15 dmg / 26 xp · speed 48 · aggro 255px
 
 | floor | hp | dmg | xp | champion hp/dmg |
 | ---: | ---: | ---: | ---: | --- |
 | 1 | 68 | 15 | 26 | 177 / 23 |
-| 2 | 96 | 19 | 32 | 250 / 29 |
-| 4 | 167 | 28 | 43 | 434 / 42 |
-| 6 | 257 | 36 | 55 | 668 / 54 |
-| 8 | 366 | 44 | 66 | 952 / 66 |
-| 10 | 493 | 53 | 77 | 1282 / 80 |
-| 12 | 640 | 61 | 89 | 1664 / 92 |
-| 15 | 896 | 74 | 106 | 2330 / 111 |
-| 20 | 1418 | 95 | 135 | 3687 / 143 |
+| 2 | 89 | 21 | 32 | 231 / 32 |
+| 4 | 133 | 34 | 43 | 346 / 51 |
+| 6 | 180 | 47 | 55 | 468 / 71 |
+| 8 | 231 | 59 | 66 | 601 / 89 |
+| 10 | 285 | 72 | 77 | 741 / 108 |
+| 12 | 342 | 84 | 89 | 889 / 126 |
+| 15 | 434 | 103 | 106 | 1128 / 155 |
+| 20 | 603 | 135 | 135 | 1568 / 203 |
 
 ### wraith — base 24 hp / 11 dmg / 20 xp · speed 95 · aggro 370px · from floor 3
 
 | floor | hp | dmg | xp | champion hp/dmg |
 | ---: | ---: | ---: | ---: | --- |
 | 1 | 24 | 11 | 20 | 62 / 17 |
-| 2 | 34 | 14 | 24 | 88 / 21 |
-| 4 | 59 | 20 | 33 | 153 / 30 |
-| 6 | 91 | 26 | 42 | 237 / 39 |
-| 8 | 129 | 33 | 51 | 335 / 50 |
-| 10 | 174 | 39 | 60 | 452 / 59 |
-| 12 | 226 | 45 | 68 | 588 / 68 |
-| 15 | 316 | 54 | 82 | 822 / 81 |
-| 20 | 501 | 70 | 104 | 1303 / 105 |
+| 2 | 31 | 16 | 24 | 81 / 24 |
+| 4 | 47 | 25 | 33 | 122 / 38 |
+| 6 | 64 | 34 | 42 | 166 / 51 |
+| 8 | 81 | 43 | 51 | 211 / 65 |
+| 10 | 100 | 53 | 60 | 260 / 80 |
+| 12 | 121 | 62 | 68 | 315 / 93 |
+| 15 | 153 | 76 | 82 | 398 / 114 |
+| 20 | 213 | 99 | 104 | 554 / 149 |
 
 ### ghoul — base 56 hp / 11 dmg / 21 xp · speed 62 · aggro 275px · from floor 2
 
@@ -240,14 +240,14 @@ Bosses (every 2nd floor, brute stock): ×8 HP, ×2 damage, ×10 XP, knockback ×
 | floor | hp | dmg | xp | champion hp/dmg |
 | ---: | ---: | ---: | ---: | --- |
 | 1 | 8 | 4 | 4 | 21 / 6 |
-| 2 | 11 | 5 | 5 | 29 / 8 |
-| 4 | 20 | 7 | 7 | 52 / 11 |
-| 6 | 30 | 10 | 8 | 78 / 15 |
-| 8 | 43 | 12 | 10 | 112 / 18 |
-| 10 | 58 | 14 | 12 | 151 / 21 |
-| 12 | 75 | 16 | 14 | 195 / 24 |
-| 15 | 105 | 20 | 16 | 273 / 30 |
-| 20 | 167 | 25 | 21 | 434 / 38 |
+| 2 | 10 | 6 | 5 | 26 / 9 |
+| 4 | 16 | 9 | 7 | 42 / 14 |
+| 6 | 21 | 12 | 8 | 55 / 18 |
+| 8 | 27 | 16 | 10 | 70 / 24 |
+| 10 | 33 | 19 | 12 | 86 / 29 |
+| 12 | 40 | 22 | 14 | 104 / 33 |
+| 15 | 51 | 28 | 16 | 133 / 42 |
+| 20 | 71 | 36 | 21 | 185 / 54 |
 
 ### Behavior tuning (special archetypes)
 
@@ -262,14 +262,14 @@ Telegraph windows are deliberately generous so every special is dodgeable.
 
 | floor | hp | dmg | xp |
 | ---: | ---: | ---: | ---: |
-| 2 | 768 | 38 | 320 |
-| 4 | 1336 | 56 | 430 |
-| 6 | 2056 | 72 | 550 |
-| 8 | 2928 | 88 | 660 |
-| 10 | 3944 | 106 | 770 |
-| 12 | 5120 | 122 | 890 |
-| 16 | 7928 | 156 | 1120 |
-| 20 | 11344 | 190 | 1350 |
+| 2 | 712 | 42 | 320 |
+| 4 | 1064 | 68 | 430 |
+| 6 | 1440 | 94 | 550 |
+| 8 | 1848 | 118 | 660 |
+| 10 | 2280 | 144 | 770 |
+| 12 | 2736 | 168 | 890 |
+| 16 | 3728 | 220 | 1120 |
+| 20 | 4824 | 270 | 1350 |
 
 ## Dungeon population
 
@@ -325,10 +325,18 @@ Champion/boss drops re-roll with common excluded.
 
 ## Blacksmith upgrades
 
-+8% weapon damage per level, max +10.
+Borin hones every worn slot but the ring: weapons gain +8% damage per level, armour
+(helmet, armor, gloves, pants, boots) gains +8% defense per level. Max +10 either way.
+Honing scales that one stat only — a piece's Life/Mana/attack-speed/move rolls and its
+affixes are untouched, so upgrades can't compound a lucky roll. Rings take no plus.
+
+Armour defense is summed exact across the worn set and rounded once, not rounded per
+piece — base rolls are only 1–9, so per-piece rounding would swallow whole levels (a
+def-1 boot would read 1 until +7). A fully honed set of def-1 commons goes 5 → 9.
+Tooltips show one decimal while a piece's honed defense is fractional.
 Cost = round((15 + ilvl·5) × rarityMult × 1.5^plus), rarityMult common 1 / magic 1.6 / rare 2.4 / unique 4.
 
-| weapon | +0→+1 | +4→+5 | +9→+10 |
+| item | +0→+1 | +4→+5 | +9→+10 |
 | --- | ---: | ---: | ---: |
 | common (floor 1) | 20g | 101g | 769g |
 | rare (floor 5) | 96g | 486g | 3691g |

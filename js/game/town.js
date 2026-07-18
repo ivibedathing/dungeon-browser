@@ -240,7 +240,7 @@
   Game.smithUpgrade = function (state, source, key) {
     if (!state.smithing) return false;
     const item = source === 'bag' ? state.bag.slots[key] : state.player.equip[key];
-    if (!item || item.slot !== 'weapon') return false;
+    if (!Items.isSmithable(item)) return false;
     if ((item.plus || 0) >= Items.MAX_PLUS) {
       G.message(state, `${Items.displayName(item)} cannot be honed any further.`, '#9aa');
       return false;
@@ -252,7 +252,7 @@
       return false;
     }
     state.bag.gold -= cost;
-    Items.upgradeWeapon(item);
+    Items.upgradeItem(item);
     G.message(state, `${Items.displayName(item)} rings true on the anvil!`, '#ffd84d');
     G.sfx(state, 'anvil');
     G.burst(state, state.player.x, state.player.y - 10, '#ffd84d', 10, 90);

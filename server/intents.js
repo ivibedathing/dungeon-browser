@@ -47,11 +47,11 @@ function sell(state, player, msg) {
 function upgrade(state, player, msg) {
   const s = msg.slotName || 'weapon';
   const item = player.equip[s];
-  if (!item || item.slot !== 'weapon') return { ok: false, reason: 'not_weapon' };
+  if (!Items.isSmithable(item)) return { ok: false, reason: 'not_smithable' };
   if ((item.plus || 0) >= Items.MAX_PLUS) return { ok: false, reason: 'maxed' };
   const cost = Items.upgradeCost(item); // server-priced
   if ((player.bag.gold || 0) < cost) return { ok: false, reason: 'insufficient_gold' };
-  if (!Items.upgradeWeapon(item)) return { ok: false, reason: 'failed' };
+  if (!Items.upgradeItem(item)) return { ok: false, reason: 'failed' };
   player.bag.gold -= cost;
   return { ok: true };
 }

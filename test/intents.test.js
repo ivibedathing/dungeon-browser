@@ -84,6 +84,23 @@ test('upgrade deducts server-priced gold and raises the weapon plus', () => {
   assert.equal(p.bag.gold, 5, 'exactly the server cost was charged');
 });
 
+test('upgrade hones equipped armour too, but never a ring', () => {
+  const state = freshState();
+  const p = state.player;
+  const rng = U.mulberry32(11);
+  p.equip.boots = Items.makeItem(2, rng, { slot: 'boots' });
+  p.equip.ring = Items.makeItem(2, rng, { slot: 'ring' });
+  p.bag.gold = 100000;
+
+  assert.equal(Intents.apply(state, p, { intent: 'upgrade', slotName: 'boots' }).ok, true);
+  assert.equal(p.equip.boots.plus, 1);
+
+  const res = Intents.apply(state, p, { intent: 'upgrade', slotName: 'ring' });
+  assert.equal(res.ok, false);
+  assert.equal(res.reason, 'not_smithable');
+  assert.equal(p.equip.ring.plus, undefined, 'ring took no plus');
+});
+
 test('upgrade with insufficient gold is rejected and nothing changes', () => {
   const state = freshState();
   const p = state.player;

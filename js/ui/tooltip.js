@@ -51,12 +51,13 @@
         if (kind === 'wand') lines.push({ text: `Blast radius ${item.stats.aoe}`, color: '#efe6d2' });
       }
       if (['armor', 'helmet', 'gloves', 'pants', 'boots'].includes(item.slot)) {
-        let def = `Defense ${item.stats.defense}`;
+        const eff = Items.armorDefense(item);
+        let def = `Defense ${Items.formatDefense(eff)}`;
         if (cmp) {
-          const d = item.stats.defense - equipped.stats.defense;
-          def += `  (${d >= 0 ? '+' : ''}${d})`;
+          const d = Math.round((eff - Items.armorDefense(equipped)) * 10) / 10;
+          def += `  (${d >= 0 ? '+' : ''}${Items.formatDefense(d)})`;
         }
-        lines.push({ text: def, color: cmp && item.stats.defense < equipped.stats.defense ? '#e5807a' : '#efe6d2' });
+        lines.push({ text: def, color: cmp && eff < Items.armorDefense(equipped) ? '#e5807a' : '#efe6d2' });
         if (item.stats.maxHP) lines.push({ text: `+${item.stats.maxHP} to Life`, color: '#efe6d2' });
         if (item.stats.maxMana) lines.push({ text: `+${item.stats.maxMana} to Mana`, color: '#7fa8ff' });
         if (item.stats.speedMult) lines.push({ text: `+${Math.round(item.stats.speedMult * 100)}% Attack Speed`, color: '#efe6d2' });
@@ -79,7 +80,7 @@
     if (hover.context === 'buyback') lines.push({ text: `Buy back for ${hover.price} gold`, color: '#ffd84d' });
     if (hover.context === 'shopPotion') lines.push({ text: `Costs ${Items.buyPrice(item)} gold`, color: '#ffd84d' });
     if (hover.context === 'bag' && state.trading) lines.push({ text: `Sell for ${Items.sellPrice(item)} gold`, color: '#ffd84d' });
-    if (state.smithing && item.slot === 'weapon' && (hover.context === 'bag' || hover.context === 'equipped')) {
+    if (state.smithing && Items.isSmithable(item) && (hover.context === 'bag' || hover.context === 'equipped')) {
       if ((item.plus || 0) >= Items.MAX_PLUS) {
         lines.push({ text: 'Fully honed (+10)', color: '#c9a15a' });
       } else {
