@@ -13,6 +13,8 @@ const http = require('node:http');
 const path = require('node:path');
 const { WebSocketServer } = require('ws');
 const { createStatic } = require('./static.js');
+const { createMetrics } = require('./metrics.js');
+const { createLogger } = require('./logger.js');
 const Protocol = require('./protocol.js');
 const { Room } = require('./room.js');
 const Character = require('./character.js');
@@ -42,11 +44,34 @@ function createServer(opts = {}) {
   const ready = Promise.resolve(store.init ? store.init() : undefined);
   const onError = opts.onError || ((err) => console.error('[server]', err && err.message ? err.message : err));
 
+  // Observability (Phase 5): injectable so tests stay deterministic. Reading metrics
+  // never mutates sim state.
+  const metrics = opts.metrics || createMetrics();
+  const logger = opts.logger || createLogger();
+  const perf = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+  // Capacity + backpressure caps (Phase 5). Over cap ⇒ a clean kick, never an OOM. A
+  // slow client's snapshot is DROPPED when its send buffer backs up — a stale snapshot
+  // is worthless anyway; the next tick supersedes it.
+  const maxRooms = opts.maxRooms != null ? opts.maxRooms : Number(process.env.MAX_ROOMS) || 2000;
+  const maxConnections = opts.maxConnections != null ? opts.maxConnections : Number(process.env.MAX_CONNECTIONS) || 8000;
+  const sendBufferCap = opts.sendBufferCap != null ? opts.sendBufferCap : 1 << 20; // 1 MiB
+
   // Serve the client and the WebSocket on ONE origin: an http listener handles static
   // GETs, and the ws server rides its `upgrade` events. `serveStatic: false` (or a
   // missing client root) leaves the http server answering 404s — the ws still works.
+  // `GET /metrics` (JSON) and `GET /healthz` are answered before the static handler.
   const staticHandler = opts.serveStatic === false ? null : createStatic({ root: path.join(__dirname, '..') });
   const httpServer = http.createServer((req, res) => {
+    const urlPath = (req.url || '/').split('?')[0];
+    if (req.method === 'GET' && urlPath === '/healthz') {
+      res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok');
+      return;
+    }
+    if (req.method === 'GET' && urlPath === '/metrics') {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(metrics.snapshot()));
+      return;
+    }
     if (staticHandler && staticHandler(req, res)) return;
     res.writeHead(404, { 'Content-Type': 'text/plain' }).end('not found');
   });
@@ -79,6 +104,8 @@ function createServer(opts = {}) {
   // A kick is a courtesy error frame then a close; the close code tells a client
   // library it was policy, not a network fault.
   function kick(ws, reason) {
+    metrics.kick(reason);
+    if (reason === Protocol.ERR.BAD_MESSAGE || reason === Protocol.ERR.RATE_LIMIT) metrics.incr('msgsDropped');
     send(ws, { t: 'error', reason, fatal: true });
     ws.close(4000, reason);
   }
@@ -181,6 +208,8 @@ function createServer(opts = {}) {
       if (!room) return kick(ws, Protocol.ERR.NO_ROOM);
       if (room.isFull) return kick(ws, Protocol.ERR.ROOM_FULL);
     } else {
+      // Opening a NEW room is capped so a flood of hosts can't OOM the process.
+      if (rooms.size >= maxRooms) { metrics.incr('joinsRejected'); return kick(ws, Protocol.ERR.SERVER_FULL); }
       const code = makeCode(rooms, rng);
       // Seed from the code so a room's dungeon is reproducible from its name alone.
       let seed = 0;
@@ -253,12 +282,19 @@ function createServer(opts = {}) {
       // instanced end-to-end and a teammate can never overwrite another's stored loot.
       blob = Character.characterBlob(room.state, player, player.bag);
     }
-    store.saveCharacter(peer.accountId, peer.selectedSlot, blob).catch(onError);
+    // Returns the store promise so the graceful drain can await the final flush; the
+    // fire-and-forget tick-path callers simply ignore it (the .catch keeps them safe).
+    return store.saveCharacter(peer.accountId, peer.selectedSlot, blob).catch(onError);
   }
 
   const onSaveHandler = (room) => (playerId, reason) => saveForPlayer(room, playerId, reason);
 
   wss.on('connection', (ws) => {
+    // Connection cap: refuse past the ceiling rather than exhausting memory/fds.
+    if (wss.clients.size > maxConnections) {
+      attach(ws);
+      return kick(ws, Protocol.ERR.SERVER_FULL);
+    }
     attach(ws);
     ws.on('pong', () => {
       ws._peer.alive = true;
@@ -271,6 +307,7 @@ function createServer(opts = {}) {
       const valid = Protocol.validateClient(decoded.msg);
       if (!valid.ok) return kick(ws, Protocol.ERR.BAD_MESSAGE);
       const msg = valid.msg;
+      metrics.incr('msgsIn');
 
       // Three budgets: a fast one for the 30 Hz input stream, a strict one for
       // control messages, and the strictest for auth attempts (each costs a scrypt).
@@ -333,15 +370,25 @@ function createServer(opts = {}) {
   // ---- The heartbeat: one interval ticks every room and fans out snapshots. ----
   const stepMs = 1000 / tickHz;
   const loop = setInterval(() => {
+    const t0 = perf();
     const t = now();
     for (const room of rooms.values()) room.tick(t);
     // Send each connected, joined peer its own AOI-filtered snapshot.
+    let players = 0;
     for (const ws of wss.clients) {
       const peer = ws._peer;
       if (!peer || !peer.room || !peer.id || ws.readyState !== ws.OPEN) continue;
+      players++;
+      // Backpressure: a slow/stalled client whose send buffer has backed up gets this
+      // tick's snapshot DROPPED — a stale snapshot is worthless; the next tick replaces it.
+      if ((ws.bufferedAmount || 0) > sendBufferCap) { metrics.incr('snapshotsDropped'); continue; }
       const snap = peer.room.snapshotFor(peer.id);
       if (snap) ws.send(Protocol.encode(snap));
     }
+    metrics.observeTick(perf() - t0);
+    metrics.incr('ticksTotal');
+    metrics.setGauge('rooms', rooms.size);
+    metrics.setGauge('players', players);
   }, stepMs);
   if (loop.unref) loop.unref(); // the tick loop must not keep a test process alive
 
@@ -369,7 +416,25 @@ function createServer(opts = {}) {
     if (store.close) await store.close();
   }
 
-  const api = { wss, httpServer, rooms, store, ready, close, tickHz, get port() { const a = httpServer.address(); return a ? a.port : port; } };
+  // Graceful shutdown (SIGTERM / deploy rollover): flush a final save for every live,
+  // persisted player before closing, so a rollover never drops progress. Bounded by a
+  // timeout so a hung store can't wedge the drain.
+  async function drain(opts2 = {}) {
+    clearInterval(loop); // stop ticking/accepting new work first
+    const pending = [];
+    for (const ws of wss.clients) {
+      const peer = ws._peer;
+      if (!peer || !peer.room || !peer.id || peer.accountId == null) continue;
+      const player = peer.room.state.players.find((p) => p.id === peer.id);
+      if (player && !player.dead) pending.push(saveForPlayer(peer.room, peer.id, 'shutdown'));
+    }
+    logger.info('drain', { players: pending.length });
+    const timeout = new Promise((r) => setTimeout(r, opts2.timeoutMs || 5000));
+    await Promise.race([Promise.allSettled(pending.filter(Boolean)), timeout]);
+    await close();
+  }
+
+  const api = { wss, httpServer, rooms, store, metrics, logger, ready, close, drain, tickHz, get port() { const a = httpServer.address(); return a ? a.port : port; } };
   return api;
 }
 
@@ -385,7 +450,7 @@ if (require.main === module) {
   };
   if (srv.httpServer.listening) announce();
   else srv.httpServer.on('listening', announce);
-  const shutdown = () => srv.close().then(() => process.exit(0));
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
+  // SIGTERM (deploy rollover) drains saves before closing; SIGINT (Ctrl-C in dev) closes fast.
+  process.on('SIGTERM', () => srv.drain().then(() => process.exit(0)));
+  process.on('SIGINT', () => srv.close().then(() => process.exit(0)));
 }

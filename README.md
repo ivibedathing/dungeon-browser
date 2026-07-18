@@ -45,6 +45,43 @@ DATABASE_URL=… node --test --test-concurrency=1 test/*.test.js
 
 The hosted claude.ai artifact build is **offline-only**: its content-security policy blocks outbound sockets, so the menu's online options are unavailable there. Online play requires running the game from these files against your own server.
 
+## Host your own server
+
+`npm start` runs one process that serves **both** the static client and the WebSocket on the same origin (default port `8080`) — no more out-of-band static server. The client, when loaded over HTTP(S), connects back to the same host/port and upgrades to `wss://` automatically under HTTPS.
+
+```bash
+npm start                 # http + ws on :8080  →  http://localhost:8080
+```
+
+**Docker (with Postgres persistence):**
+
+```bash
+docker compose up         # db + server; characters persist in a volume
+# → http://localhost:8080
+```
+
+The image is `node:20-slim`, runs as a **non-root** user, installs only `ws`+`pg` (`--omit=dev`), and ships a `HEALTHCHECK` hitting `/healthz`.
+
+**Environment:**
+
+| Var | Meaning |
+| --- | --- |
+| `PORT` | http + ws port (default `8080`) |
+| `DATABASE_URL` | Postgres URL; **unset ⇒ in-memory store** (accounts/characters are NOT persisted) |
+| `MAX_ROOMS` / `MAX_CONNECTIONS` | capacity caps; over-cap joins get a clean `server_full` kick |
+
+**Observability:** `GET /healthz` → `200 ok`; `GET /metrics` → JSON (`rooms`, `players`, `ticksTotal`, `tickMs {last,avg,max,p95}`, `msgsIn`, `msgsDropped`, `snapshotsDropped`, `kicks{…}`, `uptimeSec`, `rss`). Logs are single-line JSON to stdout with **no secrets**. SIGTERM drains a final save for every live player before exit.
+
+**TLS termination:** the server speaks plain `ws://`/`http://`; put a reverse proxy (Caddy/nginx) in front to terminate TLS and forward to the server, serving the client over the **same** HTTPS origin so the client upgrades to `wss://` on `:443` with no port constant. Minimal Caddy example:
+
+```
+your.domain {
+    reverse_proxy 127.0.0.1:8080   # proxies both the static GETs and the ws upgrade
+}
+```
+
+**Pre-deploy checks:** `node tool/fuzz.mjs` (protocol/room fuzz — no frame crashes a room) and `node --expose-gc tool/soak.mjs 50 4 10` (50 rooms × 4 bots × 10 min — memory flat, tick under budget).
+
 ## Controls
 
 | Key | Action |

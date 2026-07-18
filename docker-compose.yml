@@ -1,0 +1,31 @@
+# One `docker compose up` → a persistent co-op server backed by Postgres.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: dungeon
+      POSTGRES_PASSWORD: dungeon
+      POSTGRES_DB: dungeon
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dungeon"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  server:
+    build: .
+    environment:
+      PORT: 8080
+      DATABASE_URL: postgres://dungeon:dungeon@db:5432/dungeon
+      MAX_ROOMS: 2000
+      MAX_CONNECTIONS: 8000
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  dbdata:

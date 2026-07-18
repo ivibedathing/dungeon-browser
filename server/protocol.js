@@ -65,6 +65,7 @@ P.ERR = Object.freeze({
   ROOM_FULL: 'room_full',
   NOT_JOINED: 'not_joined',
   NOT_AUTHED: 'not_authed',
+  SERVER_FULL: 'server_full', // over the process's room/connection cap (Phase 5)
 });
 
 // Which message types are authentication attempts (the strict bucket).
