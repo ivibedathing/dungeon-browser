@@ -139,15 +139,31 @@
   // Active quests, tucked under the minimap: what you took, and how far along.
   I.drawQuestLog = function drawQuestLog(ctx, state, L) {
     const quests = state.quests || [];
-    if (!quests.length) return;
+    const main = Quests.mainQuest(state.player && state.player.mainQuest);
+    if (!quests.length && !main) return;
     const r = L.questLog;
     ctx.font = `bold 9px ${SANS}`;
     ctx.fillStyle = 'rgba(201,161,90,0.75)';
     ctx.fillText('QUESTS', r.x, r.y);
+
+    // The main quest sits above the charter and is visually distinct — it is not
+    // one of the three slots and cannot be abandoned.
+    let top = r.y;
+    if (main) {
+      ctx.font = `bold 10px ${SANS}`;
+      ctx.fillStyle = '#ff9a3d';
+      ctx.fillText(main.title, r.x, top + 16);
+      ctx.font = `9px ${SANS}`;
+      ctx.fillStyle = 'rgba(215,200,175,0.7)';
+      ctx.textAlign = 'right';
+      ctx.fillText(`Floor ${main.floor}`, r.x + r.w, top + 16);
+      ctx.textAlign = 'left';
+      top += 24;
+    }
     for (let i = 0; i < quests.length; i++) {
       const q = quests[i];
       const done = Quests.isComplete(q);
-      const y = r.y + 16 + i * 30;
+      const y = top + 16 + i * 30;
       ctx.font = `bold 10px ${SANS}`;
       ctx.fillStyle = done ? '#ffd84d' : 'rgba(232,223,200,0.9)';
       ctx.fillText(q.title, r.x, y);

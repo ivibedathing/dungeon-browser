@@ -3,11 +3,12 @@
 (function () {
   const Balance = typeof require === 'function' ? require('./balance.js') : window.Balance;
   const Entities = typeof require === 'function' ? require('./entities.js') : window.Entities;
+  const Bosses = typeof require === 'function' ? require('./bosses.js') : window.Bosses;
 
   const Quests = {};
   const Q = Balance.quests;
 
-  Quests.KINDS = ['hunt', 'champion', 'delve'];
+  Quests.KINDS = ['hunt', 'champion', 'delve', 'main'];
   Quests.BOARD_SIZE = Q.boardSize;
   Quests.MAX_ACTIVE = Q.maxActive;
 
@@ -41,7 +42,9 @@
 
   // What a quest asks for, in one line — the board and the HUD both print this.
   Quests.progressText = (q) =>
-    q.kind === 'delve' ? `Floor ${q.count} / ${q.need}` : `${Math.min(q.count, q.need)} / ${q.need}`;
+    q.kind === 'delve' ? `Floor ${q.count} / ${q.need}`
+      : q.kind === 'main' ? (q.count >= q.need ? 'Slain' : `Floor ${q.floor}`)
+        : `${Math.min(q.count, q.need)} / ${q.need}`;
 
   Quests.isComplete = (q) => !!q && q.count >= q.need;
 
@@ -56,7 +59,7 @@
   // Identity for "already taken" checks: the board must never post a bat hunt
   // while a bat hunt is on the charter, but a *fresh* bat hunt after turning the
   // old one in is fair game.
-  Quests.key = (q) => (q.kind === 'hunt' ? `hunt:${q.target}` : q.kind);
+  Quests.key = (q) => (q.kind === 'hunt' ? `hunt:${q.target}` : q.kind === 'main' ? `main:${q.act}` : q.kind);
 
   Quests.makeQuest = function (kind, target, floor, rng) {
     const f = Math.max(1, floor | 0);
@@ -136,6 +139,69 @@
     if (floor <= q.count) return false;
     q.count = floor;
     return true;
+  };
+
+  // ---- The main quest ----
+  // Six acts, each closed by killing that act's boss. This is NOT one of the
+  // three charter slots: it lives at player.mainQuest, is per-character, and
+  // dies with the character (death clears the save — a pure roguelike run).
+  //
+  // The record is deliberately tiny — an act counter and the acts already
+  // slain — and the displayable quest is derived from Bosses.ACTS rather than
+  // stored, so content edits never need a save migration.
+
+  Quests.newMain = () => Bosses.newProgress();
+
+  // The current act as a quest object the HUD can render exactly like a notice.
+  // Null once the whole thing is done — every caller must handle that.
+  Quests.mainQuest = function (mq) {
+    if (!mq || mq.complete) return null;
+    const a = Bosses.actByNumber(mq.act);
+    if (!a) return null;
+    const units = Q.mainUnitsPerAct * a.act;
+    return {
+      id: `main:${a.act}`,
+      kind: 'main',
+      act: a.act,
+      target: null,
+      need: 1,
+      count: 0,
+      floor: a.bossFloor,
+      title: `Act ${ROMAN[a.act]} — ${a.title}`,
+      desc: `Descend to floor ${a.bossFloor} and slay ${a.boss.name}, ${a.boss.epithet}. ${a.board}`,
+      reward: rewardFor(units, a.bossFloor),
+    };
+  };
+
+  const ROMAN = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV', 5: 'V', 6: 'VI' };
+  Quests.ROMAN = ROMAN;
+
+  // Credit an act-boss kill. Only the boss of the act the hero is CURRENTLY on
+  // counts: killing a deeper act's boss early is not a shortcut, and replaying a
+  // floor already cleared pays nothing.
+  Quests.recordBossKill = function (mq, monster, floor) {
+    if (!mq || mq.complete) return false;
+    if (!monster || !monster.boss || !monster.actBoss) return false;
+    const a = Bosses.actByNumber(mq.act);
+    if (!a || monster.actBoss !== a.act) return false;
+    if (floor !== undefined && floor !== a.bossFloor) return false;
+    if (mq.slain.includes(a.act)) return false;
+    mq.slain.push(a.act);
+    if (a.act >= Bosses.COUNT) mq.complete = true;
+    else mq.act = a.act + 1;
+    return true;
+  };
+
+  // A character predating the main quest, or one with a corrupt record, starts a
+  // fresh act I rather than failing to load.
+  Quests.mainFromSave = function (v) {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return Quests.newMain();
+    const slain = Array.isArray(v.slain)
+      ? v.slain.filter((n) => Number.isInteger(n) && n >= 1 && n <= Bosses.COUNT)
+      : [];
+    let act = Number.isInteger(v.act) ? v.act : 1;
+    act = Math.max(1, Math.min(Bosses.COUNT, act));
+    return { act, slain, complete: !!v.complete };
   };
 
   // Saves round-trip quests as plain data. Drop anything unrecognizable rather

@@ -4,6 +4,36 @@
   const Render = typeof window !== 'undefined' ? window.Render : require('./core.js');
   const R = Render._;
 
+  // The slam telegraph. Drawn on the GROUND, under every monster body, so a boss
+  // standing in its own circle never hides it. Without this the wind-up is
+  // invisible and the hit reads as unfair damage rather than a dodgeable attack —
+  // which is the whole point of the mechanic.
+  R.drawTelegraph = function drawTelegraph(ctx, state, m) {
+    if (!(m.telegraphT > 0) || !m.telegraph) return;
+    const tg = m.telegraph;
+    const r = tg.r || m.slamRadius || 90;
+    const windup = m.slamWindup || 0.8;
+    const fill = Math.max(0, Math.min(1, 1 - m.telegraphT / windup)); // 0 -> 1 as it closes
+    const pulse = 0.55 + 0.45 * Math.sin(state.time * 18);
+
+    ctx.save();
+    // Danger zone.
+    ctx.fillStyle = `rgba(200,40,30,${0.14 + 0.12 * fill})`;
+    ctx.beginPath();
+    ctx.arc(tg.x, tg.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    // Rim, brightening as impact approaches.
+    ctx.strokeStyle = `rgba(255,120,60,${0.5 + 0.4 * pulse})`;
+    ctx.lineWidth = 2 + 2 * fill;
+    ctx.stroke();
+    // A filling disc is the actual countdown: when it reaches the rim, it lands.
+    ctx.fillStyle = `rgba(255,154,61,${0.20 + 0.25 * fill})`;
+    ctx.beginPath();
+    ctx.arc(tg.x, tg.y, r * fill, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  };
+
   R.drawMonster = function drawMonster(ctx, state, m) {
     const t = state.time;
     let ox = 0;

@@ -58,6 +58,9 @@
         skillPoints: p.skillPoints,
         skills: p.skills,
         equip: p.equip,
+        // Per-character and dies with the hero; death clears the save entirely.
+        // Normalized by Quests.mainFromSave on load, so a missing field is fine.
+        mainQuest: p.mainQuest,
         // The run's tally sheet rides with the character; the lifetime total
         // lives under its own key and only absorbs this on death.
         stats: p.stats || null,

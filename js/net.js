@@ -579,6 +579,10 @@
         if (net.self.skillCd) rs.player.skillCd = net.self.skillCd;
         rs.bag.gold = net.self.gold;
         rs.kills = net.self.kills;
+        // The main quest drives the HUD entry and the act banner. It was the
+        // last thing still hardcoded empty online — the server persisted it all
+        // along, but never sent it and the client never read it.
+        if (net.self.mainQuest) rs.player.mainQuest = Quests.mainFromSave(net.self.mainQuest);
       }
 
       // Splice the predicted local hero over its interpolated twin: everyone else

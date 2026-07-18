@@ -13,6 +13,7 @@ globalThis.Stats = require('../js/stats.js');
 globalThis.Skills = require('../js/skills.js');
 globalThis.Entities = require('../js/entities.js');
 globalThis.Dungeon = require('../js/dungeon.js');
+globalThis.Bosses = require('../js/bosses.js');
 globalThis.Quests = require('../js/quests.js');
 globalThis.Game = require('../js/game.js');
 
@@ -179,4 +180,43 @@ test('prediction converges under a simulated 100ms one-way delay (no rubber-band
   for (let i = 1; i < xs.length; i++) maxBackstep = Math.max(maxBackstep, xs[i - 1] - xs[i]);
   assert.ok(maxBackstep < 3, `local motion never snaps backward (worst backstep ${maxBackstep.toFixed(2)}px)`);
   assert.ok(xs[xs.length - 1] > xs[0] + 40, 'and it actually made forward progress');
+});
+
+// Task 8: js/net.js hardcoded `quests: []` into the online render state, so the
+// HUD could never show quest progress online even though the server had been
+// persisting it since Phase 3. This drives the real client against the real
+// server and asserts the main quest survives the whole loop.
+test('the main quest reaches the online render state, per-character', async (t) => {
+  const srv = await startServer();
+  const url = `ws://127.0.0.1:${srv.port}`;
+  t.after(() => srv.close());
+
+  const host = await connectClient(url, 'Ash', null);
+  const code = host.code;
+  const guest = await connectClient(url, 'Bo', code);
+  const room = srv.rooms.get(code);
+  assert.ok(await until(() => room && room.playerCount === 2), 'both seated');
+
+  // Advance the two heroes to different acts server-side.
+  const ph = room.state.players.find((p) => p.id === host.you);
+  const pg = room.state.players.find((p) => p.id === guest.you);
+  for (let i = 0; i < 3; i++) {
+    const a = Bosses.ACTS[i];
+    Quests.recordBossKill(ph.mainQuest, Entities.makeBoss(a.bossFloor), a.bossFloor);
+  }
+  Quests.recordBossKill(pg.mainQuest, Entities.makeBoss(4), 4);
+
+  assert.ok(await until(() => host.self && host.self.mainQuest && host.self.mainQuest.act === 4), 'host quest crossed the wire');
+  assert.ok(await until(() => guest.self && guest.self.mainQuest && guest.self.mainQuest.act === 2), 'guest quest crossed the wire');
+
+  const rsHost = host.freshRenderState({ name: 'Ash', shirt: '#4a5578' });
+  host.reconcileLocal(rsHost, Date.now());
+  host.buildRenderState(rsHost, Date.now());
+  const rsGuest = guest.freshRenderState({ name: 'Bo', shirt: '#7a5578' });
+  guest.reconcileLocal(rsGuest, Date.now());
+  guest.buildRenderState(rsGuest, Date.now());
+
+  assert.equal(rsHost.player.mainQuest.act, 4, 'the host renders their own act');
+  assert.equal(rsGuest.player.mainQuest.act, 2, 'the guest renders theirs — a mixed-act party');
+  assert.ok(Quests.mainQuest(rsHost.player.mainQuest).title.includes('Deep'), 'and the HUD entry derives from it');
 });

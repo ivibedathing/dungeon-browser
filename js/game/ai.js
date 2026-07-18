@@ -1,5 +1,8 @@
-// game/ai.js — monster behavior: wander, aggro, flow-field chase, and per-archetype
-// specials (melee lunge, ranged casting, exploder fuse, charger dash, summoning).
+// game/ai.js — monster behavior: shared upkeep (wander, aggro, flow-field chase,
+// status, knockback) plus the per-type combat dispatch. A monster's `behavior`
+// field selects an entry in G.BEHAVIORS; the registry is seeded here with melee,
+// the shared movement helpers (chaseStep/moveAway), and the per-archetype specials
+// (ranged, exploder, charger, summoner). Boss behaviors live in js/game/behaviors.js.
 (function () {
   const Game = typeof window !== 'undefined' ? window.Game : require('./core.js');
   const Balance = typeof window !== 'undefined' ? window.Balance : require('../balance.js');
@@ -20,9 +23,98 @@
     return best;
   }
 
-  // Descend the BFS flow field toward the nearest player (with pack separation) and
-  // take one movement step. Returns true if it found a target to pursue.
-  function chaseStep(state, m, p, dt, mr, dist, mtx, mty, flow, flowDist) {
+  G.monsterUpdate = function monsterUpdate(state, m, dt) {
+    const p = nearestPlayer(state, m.x, m.y);
+    if (!p) return;
+    const stats = Entities.effectiveStats(p);
+    G.statusUpdate(state, m, dt);
+    m.attackT = Math.max(0, m.attackT - dt);
+    m.hitT = Math.max(0, m.hitT - dt);
+    m.lungeT = Math.max(0, m.lungeT - dt);
+    m.tel = 0; // telegraph charge (0..1); specials raise it while winding up
+
+    // Collision radius is capped so oversized champions still fit 1-tile corridors.
+    const mr = Math.min(13, m.size * 0.8);
+
+    // Knockback decays quickly.
+    if (m.kbx || m.kby) {
+      const moved = G.moveCircle(state.dungeon.grid, m.x, m.y, mr, m.kbx * dt, m.kby * dt);
+      m.x = moved.x;
+      m.y = moved.y;
+      m.kbx *= Math.max(0, 1 - 9 * dt);
+      m.kby *= Math.max(0, 1 - 9 * dt);
+      if (Math.abs(m.kbx) < 2) m.kbx = 0;
+      if (Math.abs(m.kby) < 2) m.kby = 0;
+    }
+
+    // Stunned: knockback still applies above, but it cannot act or steer.
+    if (Entities.hasStatus(m, 'stun')) return;
+
+    const dist = Math.hypot(p.x - m.x, p.y - m.y);
+    const mtx = Math.floor(m.x / TS);
+    const mty = Math.floor(m.y / TS);
+    const flow = state.flow.field;
+    const flowDist = flow && flow[mty] ? flow[mty][mtx] : Infinity;
+
+    if (!m.aggroed && flowDist * TS <= m.aggro) m.aggroed = true;
+
+    if (!m.aggroed) {
+      // Idle wander.
+      m.wanderT -= dt;
+      if (m.wanderT <= 0) {
+        m.wanderT = 1 + state.srand() * 2.2;
+        m.wandA = state.srand() * Math.PI * 2;
+        if (state.srand() < 0.4) m.wandA = NaN; // stand still
+      }
+      if (!Number.isNaN(m.wandA)) {
+        const v = m.speed * Entities.statusMoveMult(m) * (m.speedMult || 1) * 0.35 * dt;
+        const moved = G.moveCircle(state.dungeon.grid, m.x, m.y, mr, Math.cos(m.wandA) * v, Math.sin(m.wandA) * v);
+        m.x = moved.x;
+        m.y = moved.y;
+      }
+      return;
+    }
+
+    // Per-type behavior. Everything above is shared upkeep every monster needs
+    // (timers, knockback, stun, aggro, idle wander); everything below is how this
+    // particular monster fights. A monster with no `behavior` — which is every
+    // regular monster in the game — takes the melee path unchanged.
+    const ctx = { p, stats, dist, mr, flow, flowDist, mtx, mty };
+    const behave = (m.behavior && G.BEHAVIORS[m.behavior]) || G.BEHAVIORS.melee;
+    behave(state, m, dt, ctx);
+  };
+
+  G.BEHAVIORS = {};
+
+  // The original chase-and-melee, extracted so there is exactly one chase
+  // implementation rather than a copy that drifts from it. The hit itself is routed
+  // through hurtPlayer, the single door where dodge, defense, the run's tally sheet,
+  // and thorns retaliation all apply — bypassing it silently dropped thorns.
+  G.BEHAVIORS.melee = function melee(state, m, dt, ctx) {
+    const { p, dist } = ctx;
+
+    // Attack if in range.
+    const range = m.attackRange + PLAYER_R;
+    if (dist <= range) {
+      if (m.attackT <= 0) {
+        m.attackT = m.attackCd;
+        m.lungeT = 0.18;
+        // Thunk so the damage-variance roll only fires on a landed hit — a dodge
+        // short-circuits it, keeping the RNG stream identical to the pre-seam path.
+        G.hurtPlayer(state, p, () => m.dmg * (0.9 + state.srand() * 0.2), { attacker: m });
+      }
+      return;
+    }
+
+    G.chaseStep(state, m, dt, ctx);
+  };
+
+  // The shared approach step: descend the BFS flow field toward the target,
+  // steering straight once adjacent, with boid separation so packs don't stack.
+  // Every behavior that needs to close distance goes through this one copy.
+  G.chaseStep = function chaseStep(state, m, dt, ctx) {
+    const { p, dist, mr, flow, flowDist, mtx, mty } = ctx;
+    // Chase: descend the BFS flow field; steer straight when adjacent-tile close.
     let targetX = null;
     let targetY = null;
     if (flowDist !== Infinity && flowDist <= 2) {
@@ -48,20 +140,38 @@
       targetX = p.x;
       targetY = p.y;
     }
-    if (targetX === null) return false;
-    steer(state, m, dt, mr, targetX - m.x, targetY - m.y, 0.6);
-    return true;
-  }
+    if (targetX === null) return;
 
-  // Back away from the player (kiters and chargers at too-close range).
-  function moveAway(state, m, p, dt, mr) {
-    steer(state, m, dt, mr, m.x - p.x, m.y - p.y, 0.5);
-  }
+    let ax = targetX - m.x;
+    let ay = targetY - m.y;
+    const len = Math.hypot(ax, ay) || 1;
+    ax /= len;
+    ay /= len;
 
-  // Normalize a desired direction, add pack separation, and move by one speed step.
-  function steer(state, m, dt, mr, dx, dy, sep) {
-    let ax = dx;
-    let ay = dy;
+    // Separation from other monsters so packs don't stack.
+    for (const o of state.monsters) {
+      if (o === m) continue;
+      const d2 = U.dist2(m.x, m.y, o.x, o.y);
+      const rr = (m.size + o.size) * 0.9;
+      if (d2 < rr * rr && d2 > 0.01) {
+        const d = Math.sqrt(d2);
+        ax += ((m.x - o.x) / d) * 0.6;
+        ay += ((m.y - o.y) / d) * 0.6;
+      }
+    }
+    const alen = Math.hypot(ax, ay) || 1;
+    const v = (m.speed * Entities.statusMoveMult(m) * (m.speedMult || 1) * dt) / alen;
+    const moved = G.moveCircle(state.dungeon.grid, m.x, m.y, mr, ax * v, ay * v);
+    m.x = moved.x;
+    m.y = moved.y;
+  };
+
+  // The back-away counterpart to chaseStep: kiters and chargers use it to open
+  // distance. Same separation and status-aware speed, just aimed away from the hero.
+  G.moveAway = function moveAway(state, m, dt, ctx) {
+    const { p, mr } = ctx;
+    let ax = m.x - p.x;
+    let ay = m.y - p.y;
     const len = Math.hypot(ax, ay) || 1;
     ax /= len;
     ay /= len;
@@ -71,35 +181,22 @@
       const rr = (m.size + o.size) * 0.9;
       if (d2 < rr * rr && d2 > 0.01) {
         const d = Math.sqrt(d2);
-        ax += ((m.x - o.x) / d) * sep;
-        ay += ((m.y - o.y) / d) * sep;
+        ax += ((m.x - o.x) / d) * 0.5;
+        ay += ((m.y - o.y) / d) * 0.5;
       }
     }
     const alen = Math.hypot(ax, ay) || 1;
-    const v = (m.speed * dt) / alen;
+    const v = (m.speed * Entities.statusMoveMult(m) * (m.speedMult || 1) * dt) / alen;
     const moved = G.moveCircle(state.dungeon.grid, m.x, m.y, mr, ax * v, ay * v);
     m.x = moved.x;
     m.y = moved.y;
-  }
+  };
 
-  // ---- Per-archetype specials. Each assumes the monster is aggroed. ----
+  // ---- Per-archetype specials. Each assumes the monster is aggroed and reads its
+  // tuning from Balance.behaviors so the numbers live in one place. ----
 
-  function meleeBehavior(state, m, p, dt, mr, stats, dist, mtx, mty, flow, flowDist) {
-    const range = m.attackRange + PLAYER_R;
-    if (dist <= range) {
-      if (m.attackT <= 0) {
-        m.attackT = m.attackCd;
-        m.lungeT = 0.18;
-        // Thunk so the damage-variance roll only fires on a landed hit — a dodge
-        // short-circuits it, keeping the RNG stream identical to the pre-refactor path.
-        G.hurtPlayer(state, p, () => m.dmg * (0.9 + state.srand() * 0.2), { attacker: m });
-      }
-      return;
-    }
-    chaseStep(state, m, p, dt, mr, dist, mtx, mty, flow, flowDist);
-  }
-
-  function rangedBehavior(state, m, p, dt, mr, dist, los, mtx, mty, flow, flowDist) {
+  G.BEHAVIORS.ranged = function ranged(state, m, dt, ctx) {
+    const { p, dist } = ctx;
     const B = Balance.behaviors.ranged;
     if (m.castT > 0) {
       // Charging: hold still, telegraph, and loose the bolt at the locked aim point.
@@ -111,22 +208,24 @@
       }
       return;
     }
-    if (dist < B.kiteRange) moveAway(state, m, p, dt, mr);
-    else if (dist > B.fireRange || !los) chaseStep(state, m, p, dt, mr, dist, mtx, mty, flow, flowDist);
+    const los = G.lineOfSight(state.dungeon.grid, m.x, m.y, p.x, p.y);
+    if (dist < B.kiteRange) G.moveAway(state, m, dt, ctx);
+    else if (dist > B.fireRange || !los) G.chaseStep(state, m, dt, ctx);
     if (m.attackT <= 0 && dist <= B.fireRange && los) {
       m.castT = B.castTime;
       m.attackT = m.attackCd;
       m.aimX = p.x; // aim locks at cast start ⇒ the shot is dodgeable
       m.aimY = p.y;
     }
-  }
+  };
 
-  function exploderBehavior(state, m, p, dt, mr, dist, mtx, mty, flow, flowDist) {
+  G.BEHAVIORS.exploder = function exploder(state, m, dt, ctx) {
+    const { dist } = ctx;
     const B = Balance.behaviors.exploder;
     if ((m.fuseT || 0) > 0) {
       m.fuseT -= dt;
       m.tel = 1 - Math.max(0, m.fuseT) / B.fuseTime;
-      chaseStep(state, m, p, dt, mr, dist, mtx, mty, flow, flowDist); // lurch on while burning
+      G.chaseStep(state, m, dt, ctx); // lurch on while burning
       if (m.fuseT <= 0) G.explodeMonster(state, m, B.blastRadius, m.dmg, B.blastKb);
       return;
     }
@@ -135,10 +234,11 @@
       m.lungeT = 0.18;
       return;
     }
-    chaseStep(state, m, p, dt, mr, dist, mtx, mty, flow, flowDist);
-  }
+    G.chaseStep(state, m, dt, ctx);
+  };
 
-  function chargerBehavior(state, m, p, dt, mr, dist, los, mtx, mty, flow, flowDist) {
+  G.BEHAVIORS.charger = function charger(state, m, dt, ctx) {
+    const { p, dist, mr } = ctx;
     const B = Balance.behaviors.charger;
     if ((m.dashT || 0) > 0) {
       // Dashing: fly straight, deal one heavy contact hit, stop on wall or on contact.
@@ -170,6 +270,7 @@
       }
       return;
     }
+    const los = G.lineOfSight(state.dungeon.grid, m.x, m.y, p.x, p.y);
     if (m.attackT <= 0 && dist <= B.triggerRange && dist >= B.minRange && los) {
       m.windupT = B.windupTime;
       m.attackT = m.attackCd;
@@ -177,11 +278,12 @@
       m.aimY = p.y;
       return;
     }
-    if (dist < B.minRange) moveAway(state, m, p, dt, mr);
-    else chaseStep(state, m, p, dt, mr, dist, mtx, mty, flow, flowDist);
-  }
+    if (dist < B.minRange) G.moveAway(state, m, dt, ctx);
+    else G.chaseStep(state, m, dt, ctx);
+  };
 
-  function summonerBehavior(state, m, p, dt, mr, dist, mtx, mty, flow, flowDist) {
+  G.BEHAVIORS.summoner = function summoner(state, m, dt, ctx) {
+    const { dist } = ctx;
     const B = Balance.behaviors.summoner;
     if (m.castT > 0) {
       m.castT -= dt;
@@ -194,8 +296,8 @@
       }
       return;
     }
-    if (dist < B.kiteRange) moveAway(state, m, p, dt, mr);
-    else chaseStep(state, m, p, dt, mr, dist, mtx, mty, flow, flowDist);
+    if (dist < B.kiteRange) G.moveAway(state, m, dt, ctx);
+    else G.chaseStep(state, m, dt, ctx);
     if (m.attackT <= 0) {
       const alive = state.monsters.filter((o) => o.summonerId === m.id).length;
       if (alive < B.cap) {
@@ -204,75 +306,6 @@
       } else {
         m.attackT = 1; // at the cap — recheck shortly
       }
-    }
-  }
-
-  G.monsterUpdate = function monsterUpdate(state, m, dt) {
-    const p = nearestPlayer(state, m.x, m.y);
-    if (!p) return;
-    const stats = Entities.effectiveStats(p);
-    m.attackT = Math.max(0, m.attackT - dt);
-    m.hitT = Math.max(0, m.hitT - dt);
-    m.lungeT = Math.max(0, m.lungeT - dt);
-    m.tel = 0; // telegraph charge (0..1); specials raise it while winding up
-
-    // Collision radius is capped so oversized champions still fit 1-tile corridors.
-    const mr = Math.min(13, m.size * 0.8);
-
-    // Knockback decays quickly.
-    if (m.kbx || m.kby) {
-      const moved = G.moveCircle(state.dungeon.grid, m.x, m.y, mr, m.kbx * dt, m.kby * dt);
-      m.x = moved.x;
-      m.y = moved.y;
-      m.kbx *= Math.max(0, 1 - 9 * dt);
-      m.kby *= Math.max(0, 1 - 9 * dt);
-      if (Math.abs(m.kbx) < 2) m.kbx = 0;
-      if (Math.abs(m.kby) < 2) m.kby = 0;
-    }
-
-    const dist = Math.hypot(p.x - m.x, p.y - m.y);
-    const mtx = Math.floor(m.x / TS);
-    const mty = Math.floor(m.y / TS);
-    const flow = state.flow.field;
-    const flowDist = flow && flow[mty] ? flow[mty][mtx] : Infinity;
-
-    if (!m.aggroed && flowDist * TS <= m.aggro) m.aggroed = true;
-
-    if (!m.aggroed) {
-      // Idle wander.
-      m.wanderT -= dt;
-      if (m.wanderT <= 0) {
-        m.wanderT = 1 + state.srand() * 2.2;
-        m.wandA = state.srand() * Math.PI * 2;
-        if (state.srand() < 0.4) m.wandA = NaN; // stand still
-      }
-      if (!Number.isNaN(m.wandA)) {
-        const v = m.speed * 0.35 * dt;
-        const moved = G.moveCircle(state.dungeon.grid, m.x, m.y, mr, Math.cos(m.wandA) * v, Math.sin(m.wandA) * v);
-        m.x = moved.x;
-        m.y = moved.y;
-      }
-      return;
-    }
-
-    // Aggroed: run the archetype's behavior. Line-of-sight is only needed by the
-    // ranged/charger specials, so compute it once up front for those.
-    const behavior = m.behavior || 'melee';
-    switch (behavior) {
-      case 'ranged':
-        rangedBehavior(state, m, p, dt, mr, dist, G.lineOfSight(state.dungeon.grid, m.x, m.y, p.x, p.y), mtx, mty, flow, flowDist);
-        break;
-      case 'exploder':
-        exploderBehavior(state, m, p, dt, mr, dist, mtx, mty, flow, flowDist);
-        break;
-      case 'charger':
-        chargerBehavior(state, m, p, dt, mr, dist, G.lineOfSight(state.dungeon.grid, m.x, m.y, p.x, p.y), mtx, mty, flow, flowDist);
-        break;
-      case 'summoner':
-        summonerBehavior(state, m, p, dt, mr, dist, mtx, mty, flow, flowDist);
-        break;
-      default:
-        meleeBehavior(state, m, p, dt, mr, stats, dist, mtx, mty, flow, flowDist);
     }
   };
 })();

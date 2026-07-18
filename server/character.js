@@ -28,6 +28,7 @@ function starterBlob(name, shirt) {
       baseDamage: 0,
       hp: p.hp,
       mana: p.mana,
+      mainQuest: Quests.newMain(),
       skillPoints: 0,
       skills: {},
       equip: p.equip,
@@ -57,6 +58,7 @@ function playerFromCharacter(blob, id) {
   p.hurtT = 0;
   p.healPool = 0;
   p.healRate = 0;
+  p.mainQuest = Quests.mainFromSave(sp.mainQuest);
   p.skillCd = { whirlwind: 0, nova: 0, prayer: 0 };
   p.dodgeT = 0;
   p.dodgeCdT = 0;
@@ -109,6 +111,7 @@ function characterBlob(state, player, bag) {
       skillPoints: p.skillPoints,
       skills: p.skills,
       equip: p.equip,
+      mainQuest: p.mainQuest || Quests.newMain(),
       stats: p.stats || Stats.create(),
     },
     bag: bag || state.bag,

@@ -10,6 +10,7 @@ globalThis.U = require(join(root, 'js/util.js'));
 const Balance = require(join(root, 'js/balance.js'));
 globalThis.Items = require(join(root, 'js/items.js'));
 globalThis.Skills = require(join(root, 'js/skills.js'));
+const Bosses = require(join(root, 'js/bosses.js'));
 const E = require(join(root, 'js/entities.js'));
 const Quests = require(join(root, 'js/quests.js'));
 
@@ -50,7 +51,18 @@ line('## Monsters per floor');
 line();
 line(`Scaling: HP ×(1 + ${Balance.scaling.hpLin}·(f−1) + ${Balance.scaling.hpQuad}·(f−1)²) · damage ×(1 + ${Balance.scaling.dmgLin}·(f−1)).`);
 line(`Champions: ×${Balance.champion.hp} HP, ×${Balance.champion.dmg} damage, ×${Balance.champion.xp} XP (${Math.round(Balance.spawns.championChance * 100)}% of spawns, min 1 from floor 3).`);
-line(`Bosses (every 2nd floor, brute stock): ×${Balance.boss.hp} HP, ×${Balance.boss.dmg} damage, ×${Balance.boss.xp} XP, knockback ×${Balance.boss.kbResist}.`);
+line(`Generic guardians (arena floors 2/6/10/14/18/22 and every even floor past 24, brute stock): ×${Balance.boss.hp} HP, ×${Balance.boss.dmg} damage, ×${Balance.boss.xp} XP, knockback ×${Balance.boss.kbResist}.`);
+line();
+line('### Act bosses (the main quest)');
+line();
+line('Six named bosses close the six acts. All scale from brute stock on their floor and share the guardian combat feel (aggro, reach, knockback resist); escalation across acts is carried by damage and mechanics rather than by HP.');
+line();
+line('| act | title | floor | boss | HP | damage | XP | phases |');
+line('| ---: | --- | ---: | --- | ---: | ---: | ---: | ---: |');
+for (const a of Bosses.ACTS) {
+  const B = Balance.actBoss[a.act];
+  line(`| ${a.act} | ${a.title} | ${a.bossFloor}${a.final ? ' (final)' : ''} | ${a.boss.name} | ×${B.hp} | ×${B.dmg} | ×${B.xp} | ${(a.boss.phases || []).length} |`);
+}
 line();
 for (const type of Object.keys(Balance.monsters)) {
   const b = Balance.monsters[type];

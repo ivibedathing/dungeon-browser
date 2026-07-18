@@ -3,6 +3,7 @@
   const Game = typeof window !== 'undefined' ? window.Game : require('./core.js');
   const Quests = typeof window !== 'undefined' ? window.Quests : require('../quests.js');
   const Props = typeof window !== 'undefined' ? window.Props : require('../props.js');
+  const Bosses = typeof window !== 'undefined' ? window.Bosses : require('../bosses.js');
   const G = Game._;
   const { TS } = G;
 
@@ -102,11 +103,23 @@
       pl.down = false;
       pl.downT = 0;
       pl.reviveT = 0;
+      // Conditions do not ride the stairs down — a burn from the last floor
+      // ticking away in the loading fade would be unreadable and unfair.
+      G.clearStatus(pl);
     });
     const p = state.player;
     state.descendT = null; // no descent armed on a fresh floor
     state.cam = { x: p.x, y: p.y };
-    state.fade = { t: 0, dur: 1.6, label: `Floor ${state.floor} — ${dungeon.theme.name}` };
+    // The act banner rides the existing floor-entry fade. It reads the LOCAL
+    // hero's act, not the room's — progress is per-character, so a party can be
+    // on different acts and each sees their own.
+    const banner = Bosses.bannerFor(state.floor, state.player && state.player.mainQuest);
+    state.fade = {
+      t: 0,
+      dur: banner ? 2.4 : 1.6,
+      label: `Floor ${state.floor} — ${dungeon.theme.name}`,
+      sub: banner || null,
+    };
   }
   G.makeFloorState = makeFloorState;
 
@@ -191,6 +204,9 @@
     p.baseDamage = sp.baseDamage || 0;
     p.skillPoints = sp.skillPoints || 0;
     p.skills = sp.skills || {};
+    // Absent on every save written before the main quest existed: derive act I
+    // rather than leaving it undefined.
+    p.mainQuest = Quests.mainFromSave(sp.mainQuest);
     // A save written before stats existed restores a zeroed sheet, not undefined.
     p.stats = Stats.sanitize(sp.stats);
     if (sp.equip) {

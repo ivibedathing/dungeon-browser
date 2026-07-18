@@ -1,5 +1,6 @@
 // entities.js — player progression and monster archetypes with per-floor scaling. Pure; node-testable.
 (function () {
+  const Bosses = typeof require === 'function' ? require('./bosses.js') : window.Bosses;
   const Items = typeof require === 'function' ? require('./items.js') : window.Items;
   const Skills = typeof require === 'function' ? require('./skills.js') : window.Skills;
   const Balance = typeof require === 'function' ? require('./balance.js') : window.Balance;
@@ -43,10 +44,27 @@
       // Each hero owns their bag (co-op: instanced loot goes to p.bag). Solo/local
       // play reads it through the state.bag alias, so the save format is unchanged.
       bag: Items.createBag(),
+      // The main quest is per-character and dies with the character: death
+      // clears the save, so a run is a pure roguelike attempt at floor 24.
+      mainQuest: Bosses.newProgress(),
       // This run's tally sheet. Per-player like the bag, so in co-op each hero
       // counts their own swings and spoils.
       stats: Stats.create(),
     };
+  };
+
+  // Timed conditions live on the entity (see js/game/status.js, which owns
+  // applying and ticking them). The *read* side lives here because effectiveStats
+  // has to fold slow into moveMult, and Entities loads before any game/ part.
+  E.SLOW_FLOOR = 0.25; // slow never fully immobilizes; that is stun's job
+
+  E.hasStatus = function (ent, kind) {
+    return !!(ent && ent.status && ent.status[kind] && ent.status[kind].t > 0);
+  };
+
+  E.statusMoveMult = function (ent) {
+    if (!E.hasStatus(ent, 'slow')) return 1;
+    return Math.max(E.SLOW_FLOOR, 1 - ent.status.slow.mag);
   };
 
   E.effectiveStats = function (player) {
@@ -72,7 +90,7 @@
       thorns: g.thorns || 0,
       lifeRegen: g.lifeRegen || 0,
       xpMult: g.xpMult,
-      moveMult: g.moveMult,
+      moveMult: g.moveMult * E.statusMoveMult(player),
     };
   };
 
@@ -149,31 +167,65 @@
     return m;
   };
 
-  const BOSS_NAMES = ['Morgra the Warden', 'Ashmaw the Devourer', 'Kargul Flamehide', 'Vexis the Unmourned', 'Duromar Gravehorn'];
+  // Guardian names for the arena floors no act claims. Generated the same way
+  // champions are named, so they never run out — the old fixed 5-entry list did,
+  // repeating from floor 12 onward.
+  const GUARD_A = ['Mor', 'Ash', 'Kar', 'Vex', 'Dur', 'Grim', 'Hald', 'Ser'];
+  const GUARD_B = ['gra', 'maw', 'gul', 'is', 'omar', 'ek', 'voth']; // 7
+  const GUARD_T = ['the Warden', 'the Devourer', 'Flamehide', 'the Unmourned', 'Gravehorn', 'the Patient']; // 6
+  // Lengths 8/7/6 are pairwise near-coprime, so names cycle every lcm(8,7,6)=168
+  // floors rather than every 8 — the old fixed list repeated from floor 12.
 
-  // Floor guardians: hulking arena bosses on every second floor.
+  function guardianName(floor) {
+    const a = GUARD_A[(floor * 5) % GUARD_A.length];
+    const b = GUARD_B[(floor * 3) % GUARD_B.length];
+    const t = GUARD_T[(floor * 7) % GUARD_T.length];
+    return `${a}${b} ${t}`;
+  }
+
+  // Floor guardians. On an act-boss floor (4, 8, 12, 16, 20, 24) this is the
+  // named main-quest boss with its own behavior and phase ladder; on every other
+  // even floor it is the generic guardian the game has always had.
   E.makeBoss = function (floor, partyN = 1) {
     const base = E.makeMonster('brute', floor, false, partyN);
-    const B = Balance.boss;
-    const idx = Math.max(0, Math.floor(floor / 2) - 1) % BOSS_NAMES.length;
+    const spec = Bosses.bossForFloor(floor);
+    const act = Bosses.actForFloor(floor);
+    const B = spec ? Balance.actBoss[act.act] : Balance.boss;
+    const G = Balance.boss; // generic combat feel, shared by both
     const hp = Math.round(base.hp * B.hp);
-    return {
+    const m = {
       ...base,
       boss: true,
       champion: false,
-      name: BOSS_NAMES[idx],
+      name: spec ? `${spec.name}, ${spec.epithet}` : guardianName(floor),
       hp,
       maxHP: hp,
       dmg: Math.round(base.dmg * B.dmg),
-      xp: base.xp * B.xp,
-      speed: base.speed * B.speed,
+      xp: Math.round(base.xp * B.xp),
+      speed: base.speed * G.speed,
       size: base.size * B.size,
-      aggro: B.aggro,
-      attackRange: B.attackRange,
-      attackCd: B.attackCd,
-      kbResist: B.kbResist,
-      color: '#8e3b3b',
+      aggro: G.aggro,
+      attackRange: G.attackRange,
+      attackCd: G.attackCd,
+      kbResist: G.kbResist,
+      color: spec ? spec.color : '#8e3b3b',
     };
+    if (!spec) return m;
+
+    // Act bosses carry their behavior, its tuning, and their phase ladder. The
+    // damage-scaling fields are resolved here so behaviors read plain numbers.
+    m.actBoss = act.act;
+    m.final = !!act.final;
+    m.behavior = spec.behavior;
+    for (const k of Object.keys(spec)) {
+      if (['name', 'epithet', 'color', 'behavior', 'phases'].includes(k)) continue;
+      m[k] = spec[k];
+    }
+    m.slamDmg = Math.round(m.dmg * (spec.slamDmgMult || 1));
+    m.castDmg = Math.round(m.dmg * (spec.castDmgMult || 0.75));
+    m.phases = (spec.phases || []).map((ph) => ({ ...ph }));
+    m.phaseIdx = 0;
+    return m;
   };
 
   E.pickMonsterType = function (rng, floor) {

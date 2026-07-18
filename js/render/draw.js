@@ -70,6 +70,18 @@
     for (const po of state.portals) R.drawPortal(ctx, state, po);
     if (state.dungeon.town) R.drawTownFixtures(ctx, state);
 
+    // Telegraphs are a GROUND layer: painted before every body so a boss can
+    // never stand on top of its own warning. Culled by the telegraph's own tile,
+    // not the caster's — the circle lands where it was aimed, not where it lives.
+    for (const m of state.monsters) {
+      if (!(m.telegraphT > 0) || !m.telegraph) continue;
+      const tx = Math.floor(m.telegraph.x / TS);
+      const ty = Math.floor(m.telegraph.y / TS);
+      if (tx < x0 || tx > x1 || ty < y0 || ty > y1) continue;
+      if (!R.isVisible(state, tx, ty)) continue;
+      R.drawTelegraph(ctx, state, m);
+    }
+
     // Monsters (visible only), painter-sorted with every living party member.
     const drawables = [];
     for (const m of state.monsters) {

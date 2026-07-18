@@ -5,9 +5,10 @@
   const Quests = typeof window !== 'undefined' ? window.Quests : require('../quests.js');
   const Props = typeof window !== 'undefined' ? window.Props : require('../props.js');
   const Balance = typeof window !== 'undefined' ? window.Balance : require('../balance.js');
+  const Bosses = typeof window !== 'undefined' ? window.Bosses : require('../bosses.js');
   const Game = typeof window !== 'undefined' ? window.Game : require('./core.js');
   const G = Game._;
-  const { DROPS } = G;
+  const { DROPS, PLAYER_R } = G;
 
   // ---- Loot ----
 
@@ -148,7 +149,15 @@
     }
     G.floatText(state, m.x, m.y - m.size - 6, `${dmg}`, '#ffe9b0', m.champion ? 16 : 14);
     G.burst(state, m.x, m.y, '#a3232e', 7, 110);
-    if (m.hp <= 0) killMonster(state, m, stats, killer || state.player);
+    if (m.hp <= 0) {
+      killMonster(state, m, stats, killer || state.player);
+      return;
+    }
+    // Phase transitions are evaluated HERE, at the one place HP ever drops, and
+    // not in the AI tick. A burst that crosses two thresholds in a single frame
+    // must fire both; an AI-tick check would only ever see the final HP and
+    // silently skip the phases in between.
+    if (m.phases) G.advancePhases(state, m);
   }
   G.hitMonster = hitMonster; // exported for thorns reflection (and Phase 4 behaviors)
 
@@ -243,6 +252,32 @@
     state.monsters.push(minion);
     G.burst(state, x, y, '#6f8f6f', 8, 90);
     return minion;
+  };
+
+  // Fire every threshold the boss has dropped past, in order, at most once each.
+  G.advancePhases = function advancePhases(state, m) {
+    const frac = m.hp / (m.maxHP || m.hp);
+    if (m.phaseIdx === undefined) m.phaseIdx = 0;
+    while (m.phaseIdx < m.phases.length && frac <= m.phases[m.phaseIdx].at) {
+      const ph = m.phases[m.phaseIdx];
+      m.phaseIdx++;
+      // Behavior and its tuning fields are copied onto the monster so the
+      // dispatch in ai.js needs to know nothing about phases.
+      for (const k of Object.keys(ph)) {
+        if (k === 'at' || k === 'onEnterSummon' || k === 'message') continue;
+        m[k] = ph[k];
+      }
+      m.telegraphT = 0;
+      m.telegraph = null;
+      if (ph.onEnterSummon) {
+        G.summonAdds(state, m, ph.onEnterSummon.type, ph.onEnterSummon.count, ph.onEnterSummon.cap);
+      }
+      state.shake = Math.min(12, state.shake + 6);
+      G.burst(state, m.x, m.y, '#ffd84d', 22, 180);
+      G.sfx(state, 'levelup');
+      if (ph.message) G.message(state, ph.message, '#ff9a3d');
+      else if (m.name) G.message(state, `${m.name} changes its stance!`, '#ff9a3d');
+    }
   };
 
   function rollDamage(state, stats) {
@@ -346,8 +381,11 @@
         const reach = G.PLAYER_R + 4;
         if (U.dist2(pr.x, pr.y, pl.x, pl.y) < reach * reach) {
           dead = true;
-          hurtPlayer(state, pl, pr.dmg, { shake: 2 });
+          const dealt = hurtPlayer(state, pl, pr.dmg, { shake: 2 });
           G.burst(state, pr.x, pr.y, '#b46bff', 6, 90);
+          // A boss caster's bolt can carry a burn (see js/game/behaviors.js); apply
+          // it only on a landed hit, never through a dodge.
+          if (dealt > 0 && pr.burn > 0) G.applyStatus(pl, 'burn', pr.burnDur || 3, { dps: pr.burn, src: null });
           break;
         }
       }
@@ -375,6 +413,9 @@
           else G.burst(state, pr.x, pr.y, '#9a9a9a', 4, 60);
           break;
         }
+        // Hostile shots (monster casters) are handled entirely by
+        // updateHostileProjectile above; everything reaching here is hero-fired and
+        // looks for monsters.
         for (const m of state.monsters) {
           const reach = m.size + 4;
           if (U.dist2(pr.x, pr.y, m.x, m.y) < reach * reach) {
@@ -437,12 +478,15 @@
   }
   G.levelUpJuice = levelUpJuice;
 
+  G.hitMonster = hitMonster;
+
   function killMonster(state, m, stats, killer = state.player) {
     state.kills++;
     Stats.bump(killer, 'kills');
     if (m.boss) Stats.bump(killer, 'bosses');
     state.monsters.splice(state.monsters.indexOf(m), 1);
     G.questProgress(state, (q) => Quests.recordKill(q, m));
+    G.mainQuestKill(state, m, killer || state.player);
     state.events.push({ type: 'kill', monsterId: m.id, x: m.x, y: m.y, champion: !!m.champion, boss: !!m.boss });
     G.burst(state, m.x, m.y, '#7e1b24', 16, 140);
     G.sfx(state, 'kill');
@@ -481,6 +525,34 @@
     }
   }
   G.awardKillXP = awardKillXP;
+
+  // Act-boss credit, per character, following the SAME share rule as XP: if you
+  // were close enough to earn experience from the kill, you banked the act. A
+  // party can therefore sit on different acts, which is the accepted consequence
+  // of per-character progress — the banner reads the local hero's act, not the
+  // room's.
+  G.mainQuestKill = function mainQuestKill(state, m, killer) {
+    if (!m.boss || !m.actBoss) return;
+    const range = (Balance.coop && Balance.coop.shareRange) || 900;
+    const r2 = range * range;
+    for (const pl of state.players) {
+      if (pl.dead || pl.down) continue;
+      if (pl !== killer && U.dist2(pl.x, pl.y, m.x, m.y) > r2) continue;
+      if (!pl.mainQuest) pl.mainQuest = Quests.newMain();
+      const act = Bosses.actByNumber(pl.mainQuest.act);
+      if (!Quests.recordBossKill(pl.mainQuest, m, state.floor)) continue;
+      if (pl === state.player) {
+        G.message(state, `Act ${Quests.ROMAN[act.act]} complete — ${act.done}`, '#ffd84d');
+        if (pl.mainQuest.complete) {
+          G.message(state, 'The main quest is complete. You have reached the bottom.', '#ffd84d');
+          // A timed card, not a modal: the run stays playable and the hero can
+          // keep descending past 24 if they want to.
+          state.victory = { t: 0, dur: 7 };
+        }
+        G.sfx(state, 'levelup');
+      }
+    }
+  };
 
   // ---- Active skills ----
 
