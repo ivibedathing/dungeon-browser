@@ -14,8 +14,11 @@
     const dungeon = Dungeon.generateDungeon(state.runSeed, state.floor);
     state.dungeon = dungeon;
     state.explored = Array.from({ length: dungeon.height }, () => new Array(dungeon.width).fill(false));
+    // Party size for this floor: the room stamps state.partyN; solo is one player ⇒ n=1
+    // ⇒ every scaling multiplier is 1 ⇒ byte-identical to the pre-co-op floor.
+    const partyN = state.partyN || (state.players && state.players.length) || 1;
     state.monsters = dungeon.spawns.map((s) => ({
-      ...Entities.makeMonster(s.type, state.floor, s.champion),
+      ...Entities.makeMonster(s.type, state.floor, s.champion, partyN),
       id: state.nextId++,
       x: (s.x + 0.5) * TS,
       y: (s.y + 0.5) * TS,
@@ -39,7 +42,7 @@
     }));
     if (dungeon.boss) {
       state.monsters.push({
-        ...Entities.makeBoss(state.floor),
+        ...Entities.makeBoss(state.floor, partyN),
         id: state.nextId++,
         x: (dungeon.boss.x + 0.5) * TS,
         y: (dungeon.boss.y + 0.5) * TS,

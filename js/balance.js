@@ -101,6 +101,22 @@
     minRoomTiles: 30, // rooms smaller than this (w·h interior) never host a swarm
   };
 
+  // ---- Co-op (party) rules ----
+  // Every co-op rule degrades to solo behavior at n=1 (all multipliers = 1). Monster
+  // HP/XP scale with party size; loot instances one roll per in-range player; downed
+  // players revive within a radius or respawn; descent is a shared countdown.
+  Balance.coop = {
+    partyMax: 4,
+    hpPerPlayer: 0.5, // monster maxHP ×(1 + hpPerPlayer·(n−1))
+    xpPerPlayer: 0.35, // monster xp    ×(1 + xpPerPlayer·(n−1)); paid to each in-range member
+    shareRange: 900, // XP + loot reach every living player within this world-unit radius (≈ AOI)
+    reviveRadius: 44, // a living ally this close revives a downed player…
+    reviveTime: 1.6, // …after holding proximity this long (seconds)
+    respawnTime: 10, // a ghost left alone this long respawns at the floor entry
+    respawnHpFrac: 0.5, // revived/respawned players return with this fraction of maxHP
+    descendCountdown: 10, // seconds standing on the stairs before the party descends
+  };
+
   // ---- Blacksmith ----
   Balance.upgrade = { dmgPerPlus: 0.08, maxPlus: 10 };
 

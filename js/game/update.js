@@ -295,9 +295,10 @@
         const sprung = state.players.some((pl) => !pl.dead && U.dist2(pl.x, pl.y, trigX, trigY) <= rPx * rPx);
         if (!sprung) continue;
         amb.triggered = true;
+        const partyN = state.partyN || (state.players && state.players.length) || 1;
         for (const cell of amb.spawns) {
           state.monsters.push({
-            ...Entities.makeMonster('swarmling', state.floor, false),
+            ...Entities.makeMonster('swarmling', state.floor, false, partyN),
             id: state.nextId++,
             x: (cell.x + 0.5) * TS,
             y: (cell.y + 0.5) * TS,

@@ -98,6 +98,7 @@ class Room {
     this.state.players.push(p);
     this.syncLocalAlias();
     this.inputs.set(id, idleInput());
+    this.refreshPartyScaling();
     return { id, player: p, isHost };
   }
 
@@ -107,7 +108,27 @@ class Room {
     this.state.players.splice(i, 1);
     this.inputs.delete(id);
     this.syncLocalAlias();
+    this.refreshPartyScaling();
     return true;
+  }
+
+  // Keep monster scaling in step with party size. Party scaling (Entities.partyHpMult/
+  // partyXpMult) is sampled at floor generation and locked for that floor. While the
+  // current floor is still PRISTINE — nothing killed or damaged, no loot dropped, no
+  // ambush sprung — a join/leave regenerates it so the assembled party faces a correctly
+  // scaled floor. The moment a blow lands the floor locks, and late joiners take it as-is.
+  refreshPartyScaling() {
+    const s = this.state;
+    s.partyN = s.players.length || 1;
+    const pristine =
+      s.groundItems.length === 0 &&
+      (s.ambushes || []).every((a) => !a.triggered) &&
+      s.monsters.every((m) => m.hp === m.maxHP) &&
+      s.players.every((pl) => !pl.dead && !pl.down);
+    if (pristine) {
+      Game._.makeFloorState(s);
+      this.syncLocalAlias();
+    }
   }
 
   // The sim still has a notion of "the local player" (players[0]): the camera

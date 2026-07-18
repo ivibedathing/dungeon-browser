@@ -94,23 +94,32 @@
   E.dmgScale = (f) => 1 + Balance.scaling.dmgLin * (f - 1);
   E.xpScale = (f) => 1 + Balance.scaling.xpLin * (f - 1);
 
+  // Party (co-op) scaling: bigger party ⇒ tougher, more rewarding monsters. n=1 ⇒ ×1,
+  // so every existing caller and solo play are byte-identical (default arg keeps it so).
+  E.partyHpMult = (n) => 1 + Balance.coop.hpPerPlayer * (Math.max(1, n) - 1);
+  E.partyXpMult = (n) => 1 + Balance.coop.xpPerPlayer * (Math.max(1, n) - 1);
+
   const CHAMP_A = ['Gore', 'Ash', 'Fell', 'Rot', 'Vile', 'Black', 'Iron', 'Blight'];
   const CHAMP_B = ['maw', 'fang', 'claw', 'gnash', 'hide', 'horn', 'shade', 'tusk'];
 
-  E.makeMonster = function (type, floor, champion = false) {
+  E.makeMonster = function (type, floor, champion = false, partyN = 1) {
     const base = E.MONSTER_TYPES[type];
     const C = Balance.champion;
+    const pHp = E.partyHpMult(partyN);
+    const pXp = E.partyXpMult(partyN);
     const hp0 = Math.round(base.hp * E.hpScale(floor));
     const dmg0 = Math.max(1, Math.round(base.dmg * E.dmgScale(floor)));
     const xp0 = Math.round(base.xp * E.xpScale(floor));
-    const hp = champion ? Math.round(hp0 * C.hp) : hp0;
+    // Party scaling applies on top of champion scaling; at n=1 both mults are 1, so the
+    // Math.round is a no-op on the already-integer values ⇒ identical to the old result.
+    const hp = Math.round((champion ? hp0 * C.hp : hp0) * pHp);
     const m = {
       type,
       champion,
       hp,
       maxHP: hp,
       dmg: champion ? Math.round(dmg0 * C.dmg) : dmg0,
-      xp: champion ? xp0 * C.xp : xp0,
+      xp: Math.round((champion ? xp0 * C.xp : xp0) * pXp),
       speed: base.speed * (champion ? C.speed : 1),
       size: base.size * (champion ? C.size : 1),
       color: base.color,
@@ -130,8 +139,8 @@
   const BOSS_NAMES = ['Morgra the Warden', 'Ashmaw the Devourer', 'Kargul Flamehide', 'Vexis the Unmourned', 'Duromar Gravehorn'];
 
   // Floor guardians: hulking arena bosses on every second floor.
-  E.makeBoss = function (floor) {
-    const base = E.makeMonster('brute', floor, false);
+  E.makeBoss = function (floor, partyN = 1) {
+    const base = E.makeMonster('brute', floor, false, partyN);
     const B = Balance.boss;
     const idx = Math.max(0, Math.floor(floor / 2) - 1) % BOSS_NAMES.length;
     const hp = Math.round(base.hp * B.hp);
