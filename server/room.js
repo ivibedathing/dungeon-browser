@@ -253,6 +253,11 @@ class Room {
         skillCd: { whirlwind: round3(me.skillCd.whirlwind), nova: round3(me.skillCd.nova), prayer: round3(me.skillCd.prayer) },
         gold: (me.bag && me.bag.gold) || 0,
         kills: s.kills,
+        // The main quest is per-character, so it belongs in the PRIVATE block:
+        // each player gets their own and nobody else's. Broadcasting every
+        // hero's quest state to everyone would grow each snapshot for something
+        // no client needs in order to render anyone.
+        mainQuest: me.mainQuest || null,
       },
       // Party members are never AOI-culled: the HUD and (Phase 4) the minimap
       // need every ally every tick, and there are at most three of them. The swing
@@ -292,6 +297,13 @@ class Room {
           hitT: round3(m.hitT),
           champion: !!m.champion,
           boss: !!m.boss,
+          // A telegraph everyone can see is the difference between a dodgeable
+          // attack and unexplained damage, so it goes on the wire for all four.
+          telegraphT: m.telegraphT > 0 ? round3(m.telegraphT) : 0,
+          telegraph: m.telegraph ? { x: round2(m.telegraph.x), y: round2(m.telegraph.y), r: Math.round(m.telegraph.r || 0) } : null,
+          slamWindup: m.telegraphT > 0 ? round3(m.slamWindup || 0.8) : 0,
+          phaseIdx: m.phaseIdx || 0,
+          phaseCount: m.phases ? m.phases.length : 0,
         })),
       projectiles: s.projectiles
         .filter((pr) => this.inAOI(me, pr.x, pr.y))
