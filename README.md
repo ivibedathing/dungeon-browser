@@ -13,12 +13,27 @@ python3 -m http.server 8321
 
 Progress is saved automatically (localStorage) — close the tab and pick up where you left off. Death wipes the save; only your best-run record survives.
 
+## Multiplayer (co-op)
+
+Up to four heroes can share one dungeon. A co-op server lives under `server/` (the only part of the project with an npm dependency, `ws`); it runs the same simulation the browser does, one instance per room. It's entirely optional — solo play needs nothing but the static files.
+
+```sh
+npm install        # one-time: fetches ws
+npm start          # ws://0.0.0.0:8080 by default (PORT to override)
+npm test           # node --test over the whole suite (client + server)
+```
+
+Serve the game (`python3 -m http.server 8321`) and open it in a browser — **Play Solo** is the offline game as ever; **Host Game** opens a room and shows a share code; **Join Game** takes a friend's code. The client predicts your own hero for instant response and interpolates everyone else for smooth motion; the server is authoritative. The Host/Join client connects to `ws://<host>:8080`, so run the server on the machine you're hosting from.
+
+Note that the hosted claude.ai artifact build is **offline-only**: its content-security policy blocks outbound sockets, so the menu's online options are unavailable there. Online play requires running the game from these files against your own server.
+
 ## Controls
 
 | Key | Action |
 | --- | --- |
 | **WASD** / arrows | Move |
-| **M** | Attack — melee weapons swing an arc; bows loose arrows; wands hurl exploding fireballs |
+| **Mouse** | Aim — your hero always faces the cursor; attacks fly that way regardless of which way you walk |
+| **Left-click** (hold) | Attack — melee weapons swing an arc toward the cursor; bows loose arrows; wands hurl exploding fireballs. Hold to keep swinging |
 | **Space** | Dodge roll — a quick dash with invulnerability frames (0.9 s cooldown) |
 | **F / G / H** | Cast skills: Whirlwind / Fire Nova / Healing Prayer (cost mana, short cooldowns) |
 | **K** | Skill tree — spend skill points (1 per level) across War, Sorcery, and Faith |

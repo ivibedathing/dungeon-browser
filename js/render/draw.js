@@ -59,7 +59,7 @@
     for (const po of state.portals) R.drawPortal(ctx, state, po);
     if (state.dungeon.town) R.drawTownFixtures(ctx, state);
 
-    // Monsters (visible only), painter-sorted with the player.
+    // Monsters (visible only), painter-sorted with every living party member.
     const drawables = [];
     for (const m of state.monsters) {
       const mx = Math.floor(m.x / TS);
@@ -68,7 +68,14 @@
       if (!R.isVisible(state, mx, my)) continue;
       drawables.push({ y: m.y, fn: () => R.drawMonster(ctx, state, m) });
     }
-    if (!state.dead) drawables.push({ y: p.y, fn: () => R.drawPlayer(ctx, state) });
+    // Solo has one hero in `state.players`; co-op has the whole party. A dead hero
+    // is skipped (in solo that matches the old `!state.dead` guard, since the lone
+    // player's `dead` flips exactly when the run ends).
+    const party = state.players && state.players.length ? state.players : [p];
+    for (const pl of party) {
+      if (pl.dead) continue;
+      drawables.push({ y: pl.y, fn: () => R.drawPlayer(ctx, state, pl) });
+    }
     drawables.sort((a, b) => a.y - b.y);
     for (const d of drawables) d.fn();
 

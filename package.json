@@ -1,0 +1,17 @@
+{
+  "name": "dungeon-browser-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Co-op server for Dungeon Browser. The client stays zero-build; these deps are server-only.",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
