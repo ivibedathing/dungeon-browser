@@ -132,18 +132,29 @@
 
   Save.clearLifetime = () => remove(Save.STATS_KEY);
 
-  Save.getMuted = function () {
+  // Prefs is a single blob with more than one flag in it now, so writes have to
+  // merge — a setter that stringifies its own field alone would drop the others.
+  function prefs() {
     try {
       const d = JSON.parse(get(Save.PREFS_KEY) || 'null');
-      return !!(d && d.muted);
+      return d && typeof d === 'object' ? d : {};
     } catch {
-      return false;
+      return {};
     }
-  };
+  }
+  function setPref(key, value) {
+    const d = prefs();
+    d[key] = value;
+    set(Save.PREFS_KEY, JSON.stringify(d));
+  }
 
-  Save.setMuted = function (muted) {
-    set(Save.PREFS_KEY, JSON.stringify({ muted: !!muted }));
-  };
+  Save.getMuted = () => !!prefs().muted;
+  Save.setMuted = (muted) => setPref('muted', !!muted);
+
+  // Music mutes separately from effects. Absent (a save from before music
+  // existed) means "on" — new players should hear the score.
+  Save.getMusicMuted = () => !!prefs().musicMuted;
+  Save.setMusicMuted = (muted) => setPref('musicMuted', !!muted);
 
   if (typeof window !== 'undefined') window.Save = Save;
   if (typeof module !== 'undefined') module.exports = Save;

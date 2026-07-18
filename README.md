@@ -99,7 +99,8 @@ your.domain {
 | **Q** | Drink the first available belt potion |
 | **I** / Tab / B | Toggle inventory (game pauses) |
 | Mouse | Inventory: hover for tooltips (**hold CTRL to compare against your equipped item**), click to equip/drink, right-click to drop. At the vendor: click wares to buy, click your items to **sell**, **SELL ALL** to liquidate the haul (potions stay), and the **buy-back shelf** returns your last three sales at the price paid. At the anvil: click weapons to **upgrade**. At the notice board: click a notice to **take** it, click a finished quest to **claim** it, right-click to abandon |
-| **N** | Mute / unmute sound |
+| **N** | Mute / unmute sound effects |
+| **M** | Mute / unmute music |
 | **R** | Rise again after death (fresh run) |
 
 ## The game
@@ -117,6 +118,7 @@ your.domain {
 - **Quests** — the camp's **notice board** (press **E** to read it) posts three notices, rolled fresh each visit and scaled to your depth: *hunts* ("slay 10 bats" — only for monsters that spawn that deep), *champion bounties*, and *delves* ("descend to floor 8"). Carry up to three at once; progress tracks under the minimap as you play, a gold **!** over the board means a payout is waiting, and claiming pays gold **and** experience. Right-click tears one up. The charter survives saves.
 - **Potions** — five tiers scaling with depth, healing gradually over 1.2 s. The belt holds four for quick keys; overflow fills a **potion box** (5 healing + 5 mana) in the inventory that auto-refills the belt — potions never crowd your bag. Click a boxed potion to drink it (right-click drops it).
 - **Sound** — procedurally synthesized effects (Web Audio, no asset files).
+- **Music** — an original 8-bit score in the idiom of the era's JRPG and adventure soundtracks, synthesized at runtime from note data (again, no asset files). Four looping tracks follow the game: an arpeggiated **prelude** on the menus, a lyrical major-key **town** theme in Ashfall Camp, a minor-key **dungeon** ostinato on the floors, and driving **battle** music that takes over the moment you step into a boss arena and hands back when it ends. The voice layout is the NES's — two pulse channels for melody and harmony, a triangle bass, and filtered noise for percussion. Music mutes separately from effects (**M** vs **N**), and both settings persist.
 - **Death is permanent** — a new run starts from Floor 1. How deep can you go?
 
 ## Balance
