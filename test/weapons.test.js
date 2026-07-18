@@ -97,9 +97,9 @@ test('a wand fireball explodes and hurts the whole pack', () => {
   let state = Game.newRun(42);
   state.monsters.length = 0;
   equipWeapon(state, 'wand');
-  placeMonster(state, 160, 0);
-  placeMonster(state, 150, 18);
-  placeMonster(state, 150, -18);
+  placeMonster(state, 120, 0);
+  placeMonster(state, 110, 18);
+  placeMonster(state, 110, -18);
   state.player.facing = 0;
   const input = freshInput();
   input.keys.space = true;
