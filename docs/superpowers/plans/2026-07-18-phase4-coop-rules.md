@@ -2,9 +2,16 @@
 
 > Spec: `docs/superpowers/specs/2026-07-16-multiplayer-design.md`
 > Roadmap: `docs/superpowers/plans/2026-07-16-multiplayer-roadmap.md`
-> Predecessor: Phase 2 (client netplay) landed 2026-07-18. Phase 3 (accounts &
-> server saves) is in flight on `phase3-accounts-saves` and **unmerged**; the
-> dependency graph is 2 → 4, so this phase builds on `main` (Phase 2), not Phase 3.
+> Predecessor: Phase 3 (accounts & server saves) **landed and merged** to `main`
+> (2026-07-18); `main` has since gained bigger-maps, mouse-aim + left-click attack,
+> ambush swarms, and breakable props. **AUDIT (2026-07-18):** the original plan assumed
+> Phase 3 was unmerged and based this phase on the Phase 2 commit (`19feb0c`, 210 tests).
+> That is stale — this phase now builds on **current `main` (`121fc9b`, 241 tests)**,
+> which already includes Phase 3. Consequences woven into the tasks: (a) the Phase 3 bag
+> seam is reconciled **here**, not deferred (Task 4 / Open Q5); (b) `playerAttack`/
+> `castSkill` still read `state.player` (mouse-aim only sets `p.facing` via `input.aim`),
+> so Task 2's attacker-aware refactor stands; (c) breakable-prop loot (`dropPropLoot`)
+> and swarm monsters are new surfaces Tasks 2/4 thread through too.
 > **For agentic workers:** implement task-by-task, test-first. Every task keeps the
 > full `node --test test/*.test.js` suite green; browser-only tasks add a manual
 > verification step against a live server instead of a node test.
@@ -62,10 +69,10 @@ alias of `state.player.bag` so all solo/town/inventory code is untouched.
 
 **Files:** none (branch only).
 
-- [ ] Worktree `../dungeon-browser-phase4` on branch `phase4-coop-rules`, based on `main`
-  at the Phase 2 merge (`19feb0c`). All Phase 4 commits land here; **merge to `main`** on
-  exit (per the base decision — Phase 3 lands independently and reconciles the bag seam).
-- [ ] **Confirm green baseline:** `node --test test/*.test.js 2>&1 | tail -3` → `pass 210`.
+- [ ] Worktree `../dungeon-browser-phase4` on branch `phase4-coop-rules`, based on **current
+  `main` (`121fc9b`)** — which already includes Phase 3. All Phase 4 commits land here;
+  **merge to `main`** on exit. The bag seam with Phase 3 is reconciled in Task 4 (not deferred).
+- [ ] **Confirm green baseline:** `node --test test/*.test.js 2>&1 | tail -3` → `pass 241`.
 
 ---
 
@@ -391,8 +398,11 @@ gains the spec's 10 s party banner.
 4. **lifePerKill in a party.** Plan heals the killer only. Alternative: heal every in-range
    member (matches XP). Killer-only is simpler and avoids a party of leech-built heroes being
    unkillable; revisit if it feels bad.
-5. **Bag seam with Phase 3.** Both phases touch `Room.join`/`state.bag`. Phase 4 (on main)
-   introduces `p.bag` with `state.bag` aliasing the local player; Phase 3 loads a stored bag
-   into the (currently shared) room bag. Whoever merges second reconciles: the natural end
-   state is each seat's `p.bag` seeded from its loaded character. Flag it in the merge.
+5. **Bag seam with Phase 3 — RESOLVED (Phase 3 already merged).** Phase 3 loads a stored
+   character bag into the shared `state.bag` (host owns it; guest bags frozen server-side).
+   Task 4 introduces `p.bag` with `state.bag` aliasing the local player, and now — because
+   Phase 3 is present — seeds **each seat's `p.bag` from its loaded character** in
+   `Room.join`, and switches the save path (`server/character.js` / `server/server.js`
+   `saveForPlayer`) to persist **each player's own live `p.bag`** instead of the host/frozen
+   split. `test/persistence.test.js` and the store parity suite must stay green through this.
 ```

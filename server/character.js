@@ -69,6 +69,9 @@ function playerFromCharacter(blob, id) {
   const stats = Entities.effectiveStats(p);
   p.hp = Math.min(typeof sp.hp === 'number' ? sp.hp : stats.maxHP, stats.maxHP);
   p.mana = Math.min(typeof sp.mana === 'number' ? sp.mana : stats.maxMana, stats.maxMana);
+  // Per-player bag (Phase 4): each seat carries its own loaded bag. The save path
+  // persists p.bag directly, so co-op no longer needs the host/frozen-bag split.
+  if (blob && blob.bag) p.bag = blob.bag;
   return p;
 }
 

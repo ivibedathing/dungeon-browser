@@ -86,13 +86,41 @@ Exit met: 112/112 tests (7 new), solo verified in-browser, six TDD commits.
   rooms at once (last-write-wins on save). Add a "character already active" guard.
 - Session tokens have a 30-day TTL, refreshed on resume; no logout-elsewhere / revocation UI.
 
-## Phase 4 — Co-op rules & party UX (~1 session)
+## Phase 4 — Co-op rules & party UX ✅ *(landed 2026-07-18, branch `phase4-coop-rules` merged to `main`)*
 
-- Monster HP/XP party scaling (constants test-pinned), full XP to in-range members.
-- Instanced loot (per-owner drops), pickup validation.
-- Ghost/revive/respawn death rules; run ends on full wipe.
-- Shared descent banner; per-player portals; party bar UI + ally minimap dots + join-code display.
-- Exit: 4 scripted bots clear a floor together in the integration harness; death/revive round-trips.
+> Plan: `docs/superpowers/plans/2026-07-18-phase4-coop-rules.md`
+> Built on current `main` (post-Phase-3 + bigger-maps/mouse-aim/swarms/props), not the
+> stale Phase 2 base the plan originally assumed — see the plan's AUDIT note.
+
+- **Party scaling:** `Balance.coop` + `Entities.partyHpMult/partyXpMult`; `makeMonster`/
+  `makeBoss` take `partyN` (default 1 ⇒ byte-identical solo). The room stamps `state.partyN`
+  and regenerates the floor while pristine so the assembled party is scaled to.
+- **Attacker-aware combat:** the acting player threads through `playerAttack`/`castSkill`/
+  `explode`(via `ownerId`)/projectiles/`killMonster`. Kills pay full XP (each hero's own
+  `xpMult`) to every living player within `Balance.coop.shareRange`; `lifePerKill` heals the killer.
+- **Instanced loot + per-player bags:** each hero owns `p.bag` (`state.bag` aliases the local
+  player); `dropLoot` rolls per in-range owner (`ownerId`), solo stays one unowned roll;
+  `tryPickup`/gold-magnet + `snapshotFor` enforce ownership. Reconciled the Phase 3 bag seam
+  (per-seat bag load + save).
+- **Downed/revive/respawn:** party heroes go DOWN (revivable ghost) at 0 HP; a nearby ally
+  revives (proximity channel) or they respawn at the entry; run ends only on a simultaneous
+  full wipe. Solo keeps permadeath.
+- **Shared descent + party UX:** stairs arm a party countdown (`state.descendT`), instant when
+  all are on / when solo; `makeFloorState` fans the whole party at the entry; portals are
+  owner-tagged party-travel. Party bar, ally minimap dots, descent banner, downed ghosts;
+  join code already shown.
+- Exit met: **269 tests** (28 new co-op, incl. a 4-seat room exit proof: party scaling,
+  in-range XP, per-owner instanced drops, down→revive→continue, full-wipe→end). Solo pinned
+  byte-identical (n=1 degrade paths + headless solo drive). Test-first throughout.
+
+### Notes for Phase 4.5 (client preload & server authority)
+
+- **Attacker-aware combat has landed** — `playerAttack(state, p)` / `explode` resolve the actor,
+  so Track C's prerequisite is met.
+- **Per-player bags exist** (`p.bag`, `state.bag` alias). Track C's equip/buy/sell intents apply
+  against the acting player's `p.bag` server-side.
+- New snapshot fields for the authority/ref work: `down`/`downT`/`reviveT`, `descendT`, and
+  ground items already carry `ownerId` (Task 9's ref rework must preserve it).
 
 ## Phase 5 — Hardening & deploy (~1 session)
 

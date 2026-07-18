@@ -6,6 +6,7 @@ if (typeof window === 'undefined') {
   require('./ui/input.js');
   require('./ui/orbs.js');
   require('./ui/hud.js');
+  require('./ui/party.js');
   require('./ui/panels.js');
   require('./ui/tooltip.js');
   require('./ui/creation.js');

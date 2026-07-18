@@ -14,8 +14,11 @@
     const dungeon = Dungeon.generateDungeon(state.runSeed, state.floor);
     state.dungeon = dungeon;
     state.explored = Array.from({ length: dungeon.height }, () => new Array(dungeon.width).fill(false));
+    // Party size for this floor: the room stamps state.partyN; solo is one player ⇒ n=1
+    // ⇒ every scaling multiplier is 1 ⇒ byte-identical to the pre-co-op floor.
+    const partyN = state.partyN || (state.players && state.players.length) || 1;
     state.monsters = dungeon.spawns.map((s) => ({
-      ...Entities.makeMonster(s.type, state.floor, s.champion),
+      ...Entities.makeMonster(s.type, state.floor, s.champion, partyN),
       id: state.nextId++,
       x: (s.x + 0.5) * TS,
       y: (s.y + 0.5) * TS,
@@ -39,7 +42,7 @@
     }));
     if (dungeon.boss) {
       state.monsters.push({
-        ...Entities.makeBoss(state.floor),
+        ...Entities.makeBoss(state.floor, partyN),
         id: state.nextId++,
         x: (dungeon.boss.x + 0.5) * TS,
         y: (dungeon.boss.y + 0.5) * TS,
@@ -85,9 +88,23 @@
     state.questing = false;
     state.boardOpen = false;
     state.flow = { field: null, t: 0 };
+    // Party teleport: fan EVERY player around the entry (same layout as Room.join) so
+    // a shared descent moves the whole party, not just players[0]. A downed hero is
+    // brought back up at the entry with the party. Solo = one player at entry center.
+    const roster = state.players && state.players.length ? state.players : [state.player];
+    const ex = (dungeon.entry.x + 0.5) * TS;
+    const ey = (dungeon.entry.y + 0.5) * TS;
+    roster.forEach((pl, i) => {
+      const spread = roster.length > 1 ? 14 : 0;
+      const a = (i / Math.max(1, roster.length)) * Math.PI * 2;
+      pl.x = ex + Math.cos(a) * spread;
+      pl.y = ey + Math.sin(a) * spread;
+      pl.down = false;
+      pl.downT = 0;
+      pl.reviveT = 0;
+    });
     const p = state.player;
-    p.x = (dungeon.entry.x + 0.5) * TS;
-    p.y = (dungeon.entry.y + 0.5) * TS;
+    state.descendT = null; // no descent armed on a fresh floor
     state.cam = { x: p.x, y: p.y };
     state.fade = { t: 0, dur: 1.6, label: `Floor ${state.floor} — ${dungeon.theme.name}` };
   }
@@ -113,7 +130,7 @@
       nextId: 1,
       player,
       players: [player],
-      bag: Items.createBag(),
+      bag: player.bag, // alias: the shared vendor/HUD/save read the local player's bag
       monsters: [],
       props: [],
       groundItems: [],

@@ -183,9 +183,8 @@ function createServer(opts = {}) {
     peer.id = seat.id;
     peer.room = room;
     peer.isHost = seat.isHost;
-    // A guest's stored bag is frozen at select time; the room's shared bag belongs to
-    // the host. The save path (Task 4) uses this to avoid co-op clobbering a guest's bag.
-    peer.frozenBag = peer.selectedBlob ? peer.selectedBlob.bag : null;
+    // Per-player bag (Phase 4): the seat's p.bag is seeded from the loaded blob in
+    // Room.join, and saveForPlayer persists that live bag — no host/frozen split.
     ws._room = room; // for the broadcast sweep
     // `seed` lets the client regenerate each floor's grid deterministically
     // (Dungeon.generateDungeon(seed, floor)) instead of us re-sending the map
@@ -224,10 +223,9 @@ function createServer(opts = {}) {
     if (reason === 'death') {
       blob = Character.starterBlob(player.name, player.shirt);
     } else {
-      // The room's shared bag belongs to the host; a guest saves against the bag it
-      // arrived with (frozen), so co-op can't overwrite a teammate's stored loot.
-      const bag = peer.isHost ? room.state.bag : peer.frozenBag;
-      blob = Character.characterBlob(room.state, player, bag);
+      // Per-player bag (Phase 4): each seat persists its OWN live bag, so co-op loot is
+      // instanced end-to-end and a teammate can never overwrite another's stored loot.
+      blob = Character.characterBlob(room.state, player, player.bag);
     }
     store.saveCharacter(peer.accountId, peer.selectedSlot, blob).catch(onError);
   }

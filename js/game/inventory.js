@@ -4,12 +4,15 @@
   const G = Game._;
   const { PICKUP_RANGE } = G;
 
-  G.tryPickup = function tryPickup(state) {
-    const p = state.player;
+  // A player may only claim unowned (shared/solo) loot or its own instanced drops.
+  G.canClaim = (g, p) => g.ownerId == null || g.ownerId === p.id;
+
+  G.tryPickup = function tryPickup(state, p = state.player) {
     let best = null;
     let bestD = PICKUP_RANGE * PICKUP_RANGE;
     for (const g of state.groundItems) {
       if (g.kind !== 'item') continue;
+      if (!G.canClaim(g, p)) continue;
       const d = U.dist2(p.x, p.y, g.x, g.y);
       if (d < bestD) {
         bestD = d;
@@ -17,7 +20,7 @@
       }
     }
     if (!best) return;
-    if (Items.addItem(state.bag, best.item)) {
+    if (Items.addItem(p.bag, best.item)) {
       state.groundItems.splice(state.groundItems.indexOf(best), 1);
       G.message(state, `Picked up ${best.item.name}.`, best.item.color);
       G.floatText(state, p.x, p.y - 26, best.item.name, best.item.color, 13);

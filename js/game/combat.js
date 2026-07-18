@@ -4,42 +4,58 @@
   const Skills = typeof window !== 'undefined' ? window.Skills : require('../skills.js');
   const Quests = typeof window !== 'undefined' ? window.Quests : require('../quests.js');
   const Props = typeof window !== 'undefined' ? window.Props : require('../props.js');
+  const Balance = typeof window !== 'undefined' ? window.Balance : require('../balance.js');
   const Game = typeof window !== 'undefined' ? window.Game : require('./core.js');
   const G = Game._;
   const { DROPS } = G;
 
   // ---- Loot ----
 
-  function dropLoot(state, m) {
+  // Instanced loot: a kill rolls drops independently for every living player within
+  // share range, each pile tagged with its owner's id (only that player sees/grabs it).
+  // Solo — or any kill with a single player in range — rolls ONCE with a null owner
+  // (the legacy shared path), so solo drop behavior is byte-identical (same srand usage).
+  function dropLoot(state, m, killer = state.player) {
+    const range = (Balance.coop && Balance.coop.shareRange) || 900;
+    const r2 = range * range;
+    let recipients = (state.players || []).filter((pl) => !pl.dead && !pl.down && U.dist2(pl.x, pl.y, m.x, m.y) <= r2);
+    if (recipients.length === 0) recipients = [killer]; // the killer always earns a roll (also the no-players test path)
+    const shared = recipients.length <= 1;
+    for (const who of recipients) rollDropsFor(state, m, shared ? null : who.id);
+  }
+  Game.dropLoot = dropLoot; // exported for balance wiring tests and the future server
+
+  // One player's roll off a fallen monster, tagged with `ownerId` (null = shared/solo).
+  function rollDropsFor(state, m, ownerId) {
     const f = state.floor;
     const scatter = () => (state.srand() - 0.5) * 30;
+    const push = (o) => state.groundItems.push({ id: state.nextId++, ownerId, ...o });
     if (m.boss) {
       // Bosses always shower loot: two magic-or-better items plus a fat gold pile.
       for (let i = 0; i < 2; i++) {
         const item = Items.makeItem(f, state.srand, { guaranteeMagic: true });
-        state.groundItems.push({ id: state.nextId++, kind: 'item', item, x: m.x + scatter() * 1.6, y: m.y + scatter() * 1.6 });
+        push({ kind: 'item', item, x: m.x + scatter() * 1.6, y: m.y + scatter() * 1.6 });
       }
       const amount = Math.round(U.randInt(state.srand, 25, 45) * (1 + 0.3 * (f - 1)));
-      state.groundItems.push({ id: state.nextId++, kind: 'gold', amount, x: m.x + scatter(), y: m.y + scatter() });
+      push({ kind: 'gold', amount, x: m.x + scatter(), y: m.y + scatter() });
       return;
     }
     const roll = state.srand();
     if (m.champion || roll < DROPS.item) {
       const item = Items.makeItem(f, state.srand, { guaranteeMagic: m.champion });
-      state.groundItems.push({ id: state.nextId++, kind: 'item', item, x: m.x + scatter(), y: m.y + scatter() });
+      push({ kind: 'item', item, x: m.x + scatter(), y: m.y + scatter() });
     } else if (roll < DROPS.item + DROPS.potion) {
       const item = Items.makePotion(f, state.srand, state.srand() < DROPS.manaShare ? 'mana' : 'health');
-      state.groundItems.push({ id: state.nextId++, kind: 'item', item, x: m.x + scatter(), y: m.y + scatter() });
+      push({ kind: 'item', item, x: m.x + scatter(), y: m.y + scatter() });
     } else if (roll < DROPS.item + DROPS.potion + DROPS.gold) {
       const amount = Math.round(U.randInt(state.srand, 4, 9) * (1 + 0.3 * (f - 1)));
-      state.groundItems.push({ id: state.nextId++, kind: 'gold', amount, x: m.x + scatter(), y: m.y + scatter() });
+      push({ kind: 'gold', amount, x: m.x + scatter(), y: m.y + scatter() });
     }
     if (m.champion && state.srand() < DROPS.championGold) {
       const amount = Math.round(U.randInt(state.srand, 10, 20) * (1 + 0.3 * (f - 1)));
-      state.groundItems.push({ id: state.nextId++, kind: 'gold', amount, x: m.x + scatter(), y: m.y + scatter() });
+      push({ kind: 'gold', amount, x: m.x + scatter(), y: m.y + scatter() });
     }
   }
-  Game.dropLoot = dropLoot; // exported for balance wiring tests and the future server
 
   // ---- Breakable decorations ----
 
@@ -118,7 +134,7 @@
 
   // ---- Combat ----
 
-  function hitMonster(state, m, dmg, stats, kbAngle, kbForce) {
+  function hitMonster(state, m, dmg, stats, kbAngle, kbForce, killer) {
     m.hp -= dmg;
     m.hitT = 0.16;
     m.aggroed = true;
@@ -129,15 +145,14 @@
     }
     G.floatText(state, m.x, m.y - m.size - 6, `${dmg}`, '#ffe9b0', m.champion ? 16 : 14);
     G.burst(state, m.x, m.y, '#a3232e', 7, 110);
-    if (m.hp <= 0) killMonster(state, m, stats);
+    if (m.hp <= 0) killMonster(state, m, stats, killer || state.player);
   }
 
   function rollDamage(state, stats) {
     return Math.max(1, Math.round(stats.damage * (0.85 + state.srand() * 0.3)));
   }
 
-  function playerAttack(state) {
-    const p = state.player;
+  function playerAttack(state, p = state.player) {
     const stats = Entities.effectiveStats(p);
     p.attackT = 1 / stats.speed;
 
@@ -150,7 +165,7 @@
         if (!U.pointInArc(m.x, m.y, p.x, p.y, p.facing, stats.arc, reach)) continue;
         if (!G.lineOfSight(state.dungeon.grid, p.x, p.y, m.x, m.y)) continue;
         hitAny = true;
-        hitMonster(state, m, rollDamage(state, stats), stats, Math.atan2(m.y - p.y, m.x - p.x), stats.kb);
+        hitMonster(state, m, rollDamage(state, stats), stats, Math.atan2(m.y - p.y, m.x - p.x), stats.kb, p);
       }
       if (G.damagePropsInArc(state, p.x, p.y, p.facing, stats.arc, stats.radius, () => rollDamage(state, stats))) hitAny = true;
       if (hitAny) {
@@ -180,8 +195,16 @@
   }
   G.playerAttack = playerAttack;
 
+  // The projectile's owner (the hero who fired it) carries the kill credit and the
+  // stats the blast is computed against — falling back to the local player if that
+  // hero has since left the room.
+  function projectileOwner(state, pr) {
+    return state.players.find((pl) => pl.id === pr.ownerId) || state.player;
+  }
+
   function explode(state, pr) {
-    const stats = Entities.effectiveStats(state.player);
+    const owner = projectileOwner(state, pr);
+    const stats = Entities.effectiveStats(owner);
     G.burst(state, pr.x, pr.y, '#ff9a3d', 18, 160);
     G.burst(state, pr.x, pr.y, '#ffd84d', 10, 100);
     state.shake = Math.min(6, state.shake + 1.5);
@@ -190,13 +213,12 @@
       const reach = pr.aoe + m.size;
       if (U.dist2(pr.x, pr.y, m.x, m.y) >= reach * reach) continue;
       if (!G.lineOfSight(state.dungeon.grid, pr.x, pr.y, m.x, m.y)) continue;
-      hitMonster(state, m, pr.dmg, stats, Math.atan2(m.y - pr.y, m.x - pr.x), 140);
+      hitMonster(state, m, pr.dmg, stats, Math.atan2(m.y - pr.y, m.x - pr.x), 140, owner);
     }
     G.damagePropsInRadius(state, pr.x, pr.y, pr.aoe, pr.dmg);
   }
 
   G.updateProjectiles = function updateProjectiles(state, dt) {
-    const p = state.player;
     for (const pr of [...state.projectiles]) {
       pr.ttl -= dt;
       let dead = pr.ttl <= 0;
@@ -218,7 +240,8 @@
             if (pr.kind === 'fireball') {
               explode(state, pr);
             } else {
-              hitMonster(state, m, pr.dmg, Entities.effectiveStats(p), Math.atan2(pr.vy, pr.vx), 90);
+              const owner = projectileOwner(state, pr);
+              hitMonster(state, m, pr.dmg, Entities.effectiveStats(owner), Math.atan2(pr.vy, pr.vx), 90, owner);
               G.sfx(state, 'hit');
             }
             break;
@@ -257,7 +280,22 @@
     }
   };
 
-  function killMonster(state, m, stats) {
+  // Grant a level-up's juice to `who` (positioned at them). Save/records stay guarded
+  // on the local player — online skips saves, solo saves as before.
+  function levelUpJuice(state, who, levels) {
+    if (levels <= 0) return;
+    G.floatText(state, who.x, who.y - 30, 'LEVEL UP!', '#ffd84d', 22);
+    G.message(state, `${who === state.player ? 'You are' : who.name + ' is'} now level ${who.level}. (+14 Life, +2 Damage)`, '#ffd84d');
+    G.burst(state, who.x, who.y, '#ffd84d', 26, 170);
+    G.sfx(state, 'levelup');
+    if (who === state.player) {
+      if (typeof Save !== 'undefined') Save.updateRecords(state);
+      G.save(state);
+    }
+  }
+  G.levelUpJuice = levelUpJuice;
+
+  function killMonster(state, m, stats, killer = state.player) {
     state.kills++;
     state.monsters.splice(state.monsters.indexOf(m), 1);
     G.questProgress(state, (q) => Quests.recordKill(q, m));
@@ -272,27 +310,36 @@
       state.shake = 7;
       G.message(state, `${m.name} has been slain!`, '#ff9a3d');
     }
+    // "You kill, you leech": lifePerKill heals the credited killer only.
     if (stats.lifePerKill > 0) {
-      state.player.hp = Math.min(Entities.effectiveStats(state.player).maxHP, state.player.hp + stats.lifePerKill);
+      killer.hp = Math.min(Entities.effectiveStats(killer).maxHP, killer.hp + stats.lifePerKill);
     }
-    const xp = Math.round(m.xp * stats.xpMult);
-    const levels = Entities.gainXP(state.player, xp);
-    if (levels > 0) {
-      G.floatText(state, state.player.x, state.player.y - 30, 'LEVEL UP!', '#ffd84d', 22);
-      G.message(state, `You are now level ${state.player.level}. (+14 Life, +2 Damage)`, '#ffd84d');
-      G.burst(state, state.player.x, state.player.y, '#ffd84d', 26, 170);
-      G.sfx(state, 'levelup');
-      if (typeof Save !== 'undefined') Save.updateRecords(state);
-      G.save(state);
-    }
-    dropLoot(state, m);
+    // XP goes to every living player within share range of the kill (Task 3). Solo:
+    // the one player is always in range ⇒ identical to the old single-player grant.
+    awardKillXP(state, m, killer);
+    dropLoot(state, m, killer);
   }
+
+  // Full XP (each hero's own xpMult) to every living player within Balance.coop.shareRange
+  // of the fallen monster. Solo degrades to a single in-range grant.
+  function awardKillXP(state, m, killer) {
+    const range = (Balance.coop && Balance.coop.shareRange) || 900;
+    const r2 = range * range;
+    for (const pl of state.players) {
+      if (pl.dead || pl.down) continue;
+      if (pl !== killer && U.dist2(pl.x, pl.y, m.x, m.y) > r2) continue;
+      const xp = Math.round(m.xp * Entities.effectiveStats(pl).xpMult);
+      levelUpJuice(state, pl, Entities.gainXP(pl, xp));
+    }
+  }
+  G.awardKillXP = awardKillXP;
 
   // ---- Active skills ----
 
-  Game.castSkill = function (state, idx) {
+  Game.castSkill = function (state, p, idx) {
+    // Back-compat: legacy callers pass (state, idx) for the local player.
+    if (typeof idx === 'undefined') { idx = p; p = state.player; }
     const id = Skills.ACTIVE_ORDER[idx];
-    const p = state.player;
     const rank = Skills.rank(p, id);
     if (rank <= 0) {
       G.message(state, 'You have not learned that skill. (K opens the skill tree)', '#9aa');

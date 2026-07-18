@@ -27,6 +27,8 @@
     I.drawManaOrb(ctx, state, L);
     I.drawMinimap(ctx, state, L);
     I.drawQuestLog(ctx, state, L);
+    I.drawPartyBar(ctx, state, L);
+    I.drawDescentBanner(ctx, state, view);
 
     // Location title (top center).
     const locLabel = state.inTown

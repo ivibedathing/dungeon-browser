@@ -192,7 +192,15 @@
       ctx.fillStyle = m.champion ? '#ff9a3d' : '#e5534b';
       ctx.fillRect(mm.x + (m.x / Dungeon.TILE_SIZE) * s - 1, mm.y + (m.y / Dungeon.TILE_SIZE) * s - 1, 3, 3);
     }
+    // Party allies as coloured dots (their shirt tone); the local hero pulses white.
     const p = state.player;
+    const party = state.players && state.players.length ? state.players : [p];
+    for (const pl of party) {
+      if (pl === p || pl.id === p.id) continue;
+      if (pl.dead) continue;
+      ctx.fillStyle = pl.down ? 'rgba(150,150,160,0.85)' : pl.shirt || '#8fd4ff';
+      ctx.fillRect(mm.x + (pl.x / Dungeon.TILE_SIZE) * s - 1.5, mm.y + (pl.y / Dungeon.TILE_SIZE) * s - 1.5, 4, 4);
+    }
     const pulse = 0.6 + 0.4 * Math.sin(state.time * 6);
     ctx.fillStyle = `rgba(255,255,255,${pulse})`;
     ctx.fillRect(mm.x + (p.x / Dungeon.TILE_SIZE) * s - 1.5, mm.y + (p.y / Dungeon.TILE_SIZE) * s - 1.5, 4, 4);

@@ -3,9 +3,34 @@
 // Loads last: it stitches together the other game/ parts.
 (function () {
   const Skills = typeof window !== 'undefined' ? window.Skills : require('../skills.js');
+  const Balance = typeof window !== 'undefined' ? window.Balance : require('../balance.js');
   const Game = typeof window !== 'undefined' ? window.Game : require('./core.js');
   const G = Game._;
   const { TS, PLAYER_R, MOVE_SPEED, GOLD_MAGNET } = G;
+
+  // A downed co-op hero returns to their feet — revived in place by an ally, or
+  // respawned at the floor entry — with a fraction of their max HP.
+  function reviveDowned(state, pl) {
+    pl.down = false;
+    pl.downT = 0;
+    pl.reviveT = 0;
+    pl.hp = Math.round(Entities.effectiveStats(pl).maxHP * Balance.coop.respawnHpFrac);
+    G.burst(state, pl.x, pl.y, '#8fe89a', 24, 130);
+    G.sfx(state, 'heal');
+    G.message(state, `${pl.name} is back on their feet!`, '#8fe89a');
+  }
+  function respawnDowned(state, pl) {
+    pl.down = false;
+    pl.downT = 0;
+    pl.reviveT = 0;
+    const e = state.dungeon.entry;
+    pl.x = (e.x + 0.5) * TS;
+    pl.y = (e.y + 0.5) * TS;
+    pl.hp = Math.round(Entities.effectiveStats(pl).maxHP * Balance.coop.respawnHpFrac);
+    G.burst(state, pl.x, pl.y, '#8fd4ff', 24, 130);
+    G.sfx(state, 'travel');
+    G.message(state, `${pl.name} respawns at the entrance.`, '#8fd4ff');
+  }
 
   Game.EMPTY_INPUT = Object.freeze({
     keys: Object.freeze({ w: false, a: false, s: false, d: false, space: false }),
@@ -96,7 +121,7 @@
     }
 
     for (const pl of state.players) {
-      if (!pl.dead) updatePlayerAlways(state, pl, dt);
+      if (!pl.dead && !pl.down) updatePlayerAlways(state, pl, dt);
     }
 
     if (state.invOpen || state.treeOpen || state.boardOpen) {
@@ -111,7 +136,7 @@
     state.smithing = false;
     state.questing = false;
     for (const pl of state.players) {
-      if (pl.dead) continue;
+      if (pl.dead || pl.down) continue;
       const worldRebuilt = updatePlayerActions(state, pl, inputs[pl.id] || Game.EMPTY_INPUT, dt);
       if (worldRebuilt) return state;
     }
@@ -182,15 +207,15 @@
     // Attack (hold the left mouse button to keep swinging) — never mid-roll. The
     // sim reads the held flag as `keys.space` for historical reasons; the client
     // now drives it from the mouse. Swings/shots fly along `p.facing` — the cursor.
-    if (input.keys.space && p.attackT <= 0 && p.dodgeT <= 0) G.playerAttack(state);
+    if (input.keys.space && p.attackT <= 0 && p.dodgeT <= 0) G.playerAttack(state, p);
 
     // Active skills (F / G / H).
     for (let i = 0; i < Skills.ACTIVE_ORDER.length; i++) {
-      if (input.pressed.has('skill' + i)) Game.castSkill(state, i);
+      if (input.pressed.has('skill' + i)) Game.castSkill(state, p, i);
     }
 
     // Town portal skill (cooldown/arming ticks live in updateWorld).
-    if (input.pressed.has('portal')) G.castPortal(state);
+    if (input.pressed.has('portal')) G.castPortal(state, p);
     const gate = state.portals.find((po) => po.armT <= 0 && U.dist2(p.x, p.y, po.x, po.y) < 20 * 20);
     if (gate) {
       G.travel(state, gate);
@@ -226,26 +251,39 @@
       if (state.trading && p === state.player) Game.buyPotion(state);
       else if (state.smithing && p === state.player) Game.upgradeEquipped(state);
       else if (state.questing && p === state.player) state.boardOpen = true;
-      else G.tryPickup(state);
+      else G.tryPickup(state, p);
     }
+    // Gold magnets to whoever walks over it — but only its owner (or unowned) can claim
+    // it, and it credits that player's own bag.
     for (const g of [...state.groundItems]) {
-      if (g.kind === 'gold' && U.dist2(p.x, p.y, g.x, g.y) < GOLD_MAGNET * GOLD_MAGNET) {
-        state.bag.gold += g.amount;
+      if (g.kind === 'gold' && G.canClaim(g, p) && U.dist2(p.x, p.y, g.x, g.y) < GOLD_MAGNET * GOLD_MAGNET) {
+        p.bag.gold += g.amount;
         state.groundItems.splice(state.groundItems.indexOf(g), 1);
         G.floatText(state, p.x, p.y - 22, `+${g.amount} gold`, '#ffd84d', 12);
         G.sfx(state, 'gold');
       }
     }
 
-    // Stairs.
-    const ptx = Math.floor(p.x / TS);
-    const pty = Math.floor(p.y / TS);
-    if (state.dungeon.grid[pty] && state.dungeon.grid[pty][ptx] === Dungeon.TILE.STAIRS_DOWN) {
-      G.descend(state);
-      return true;
+    // Stairs: solo descends instantly (unchanged feel). In a party the descent is a
+    // shared countdown handled in updateWorld, so a lone player stepping on doesn't
+    // yank the whole party down — see the descent logic there.
+    if (state.players.length <= 1) {
+      const ptx = Math.floor(p.x / TS);
+      const pty = Math.floor(p.y / TS);
+      if (state.dungeon.grid[pty] && state.dungeon.grid[pty][ptx] === Dungeon.TILE.STAIRS_DOWN) {
+        G.descend(state);
+        return true;
+      }
     }
 
     return false;
+  }
+
+  // Is a player standing on the stairs-down tile?
+  function onStairs(state, pl) {
+    const tx = Math.floor(pl.x / TS);
+    const ty = Math.floor(pl.y / TS);
+    return state.dungeon.grid[ty] && state.dungeon.grid[ty][tx] === Dungeon.TILE.STAIRS_DOWN;
   }
 
   // World systems: everything that runs once per frame regardless of player count.
@@ -261,7 +299,7 @@
       state.flow.field = Dungeon.flowFieldMulti(
         state.dungeon.grid,
         state.players
-          .filter((pl) => !pl.dead)
+          .filter((pl) => !pl.dead && !pl.down)
           .map((pl) => ({ x: Math.floor(pl.x / TS), y: Math.floor(pl.y / TS) })),
         30
       );
@@ -292,12 +330,13 @@
         const trigX = (amb.cx + 0.5) * TS;
         const trigY = (amb.cy + 0.5) * TS;
         const rPx = amb.radius * TS;
-        const sprung = state.players.some((pl) => !pl.dead && U.dist2(pl.x, pl.y, trigX, trigY) <= rPx * rPx);
+        const sprung = state.players.some((pl) => !pl.dead && !pl.down && U.dist2(pl.x, pl.y, trigX, trigY) <= rPx * rPx);
         if (!sprung) continue;
         amb.triggered = true;
+        const partyN = state.partyN || (state.players && state.players.length) || 1;
         for (const cell of amb.spawns) {
           state.monsters.push({
-            ...Entities.makeMonster('swarmling', state.floor, false),
+            ...Entities.makeMonster('swarmling', state.floor, false, partyN),
             id: state.nextId++,
             x: (cell.x + 0.5) * TS,
             y: (cell.y + 0.5) * TS,
@@ -327,7 +366,7 @@
       const bossMon = state.monsters.find((m) => m.boss);
       const br = bossDef.room;
       const inside = state.players.some((pl) => {
-        if (pl.dead) return false;
+        if (pl.dead || pl.down) return false;
         const btx = Math.floor(pl.x / TS);
         const bty = Math.floor(pl.y / TS);
         return btx >= br.x && btx < br.x + br.w && bty >= br.y && bty < br.y + br.h;
@@ -344,22 +383,73 @@
       state.bossFight = false;
     }
 
-    // Deaths: players fall individually; the run ends when everyone is down.
+    // Deaths & downs. Solo keeps permadeath (0 HP ⇒ dead, run ends). In a party a
+    // fallen hero goes DOWN (a revivable ghost) instead of dying; the run ends only
+    // when the whole party is down/dead at once.
+    const C = Balance.coop;
+    const party = state.players.length > 1;
     for (const pl of state.players) {
-      if (!pl.dead && pl.hp <= 0) {
-        pl.hp = 0;
+      if (pl.dead || pl.down || pl.hp > 0) continue;
+      pl.hp = 0;
+      G.burst(state, pl.x, pl.y, '#8e2731', 40, 200);
+      G.sfx(state, 'death');
+      if (party) {
+        pl.down = true;
+        pl.downT = 0;
+        pl.reviveT = 0;
+        G.message(state, `${pl.name} is down! Revive them or they respawn in ${C.respawnTime}s.`, '#ff5c4d');
+      } else {
         pl.dead = true;
-        G.burst(state, pl.x, pl.y, '#8e2731', 40, 200);
-        G.sfx(state, 'death');
       }
     }
-    if (!state.dead && state.players.every((pl) => pl.dead)) {
+
+    // Revive (a living ally holds proximity) or respawn (left alone too long).
+    if (party) {
+      const rr2 = C.reviveRadius * C.reviveRadius;
+      for (const pl of state.players) {
+        if (!pl.down) continue;
+        pl.downT = (pl.downT || 0) + dt;
+        const reviver = state.players.some((a) => a !== pl && !a.dead && !a.down && U.dist2(a.x, a.y, pl.x, pl.y) <= rr2);
+        if (reviver) {
+          pl.reviveT = (pl.reviveT || 0) + dt;
+          if (pl.reviveT >= C.reviveTime) reviveDowned(state, pl);
+        } else {
+          pl.reviveT = 0;
+          if (pl.downT >= C.respawnTime) respawnDowned(state, pl);
+        }
+      }
+    }
+
+    // Run ends on a simultaneous full wipe (everyone down or dead).
+    if (!state.dead && state.players.every((pl) => pl.dead || pl.down)) {
+      for (const pl of state.players) pl.dead = true;
       state.dead = true;
       state.deathT = 0;
       state.shake = 10;
       if (typeof Save !== 'undefined') {
         Save.updateRecords(state);
         Save.clear();
+      }
+    }
+
+    // Shared descent (party): while ≥1 living hero stands on the stairs the party
+    // countdown ticks; it fires at 0, or instantly once EVERY living hero is on the
+    // stairs. Step off and it resets. (Solo descends instantly in updatePlayerActions.)
+    if (!state.dead && !state.inTown && state.players.length > 1) {
+      const living = state.players.filter((pl) => !pl.dead && !pl.down);
+      const onIt = living.filter((pl) => onStairs(state, pl));
+      if (onIt.length > 0 && living.length > 0) {
+        if (onIt.length === living.length) {
+          G.descend(state);
+          return state;
+        }
+        state.descendT = (state.descendT == null ? C.descendCountdown : state.descendT) - dt;
+        if (state.descendT <= 0) {
+          G.descend(state);
+          return state;
+        }
+      } else {
+        state.descendT = null;
       }
     }
 
