@@ -178,6 +178,7 @@ test('a staff hurls an exploding blast like a wand', () => {
 test('a thrown weapon flies as a non-splash projectile and kills', () => {
   let state = Game.newRun(41);
   state.monsters.length = 0;
+  standClearOf(state, [[150, 0]]);
   equipWeapon(state, 'thrown');
   const m = placeMonster(state, 150, 0);
   state.player.facing = 0;
@@ -195,6 +196,7 @@ test('a thrown weapon flies as a non-splash projectile and kills', () => {
 test('a crossbow looses a bolt down the line', () => {
   let state = Game.newRun(41);
   state.monsters.length = 0;
+  standClearOf(state, [[150, 0]]);
   equipWeapon(state, 'crossbow');
   const m = placeMonster(state, 150, 0);
   state.player.facing = 0;

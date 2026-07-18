@@ -242,9 +242,32 @@
     }
     return state;
   }
-  // Place an aggroed monster of `type` at an offset that's been verified walkable
-  // (the +150/+40 lanes along +x are open with line-of-sight on these seeds — the
-  // existing weapons tests fire arrows down them).
+  // Move the hero to a tile in the entry room where every listed offset lands on
+  // open floor, so placements survive a dungeon-layout change instead of parking a
+  // monster inside a wall. Mirrors the same-named helper in weapons.test.js.
+  function standClearOf(state, offsets) {
+    const room = state.dungeon.rooms[0];
+    const grid = state.dungeon.grid;
+    const open = (px, py) => {
+      const tx = Math.floor(px / TS);
+      const ty = Math.floor(py / TS);
+      return grid[ty] !== undefined && Dungeon.isWalkable(grid[ty][tx]);
+    };
+    for (let ty = room.y + 1; ty < room.y + room.h - 1; ty++) {
+      for (let tx = room.x + 1; tx < room.x + room.w - 1; tx++) {
+        const px = tx * TS + TS / 2;
+        const py = ty * TS + TS / 2;
+        if (!open(px, py)) continue;
+        if (!offsets.every(([dx, dy]) => open(px + dx, py + dy))) continue;
+        state.player.x = px;
+        state.player.y = py;
+        return;
+      }
+    }
+    assert.fail(`entry room has no spot clear of ${JSON.stringify(offsets)}`);
+  }
+  // Place an aggroed monster of `type` at an offset the caller has cleared with
+  // standClearOf (so it stands on open floor regardless of the generated layout).
   function place(state, type, dx, dy, extra = {}) {
     const m = {
       ...Entities.makeMonster(type, 5, false),
@@ -262,6 +285,7 @@
   test('a ranged caster looses a hostile bolt that damages the player, not monsters', () => {
     let state = Game.newRun(41);
     state.monsters.length = 0;
+    standClearOf(state, [[150, 0], [80, 0]]);
     const cultist = place(state, 'cultist', 150, 0);
     const bystander = place(state, 'zombie', 80, 0, { attackT: 999, aggroed: false, hp: 500, maxHP: 500 });
     const hp0 = state.player.hp;
@@ -292,6 +316,7 @@
   test('a charger winds up then dashes across ground and lands a contact hit', () => {
     let state = Game.newRun(41);
     state.monsters.length = 0;
+    standClearOf(state, [[150, 0]]);
     const gargoyle = place(state, 'gargoyle', 150, 0);
     const startDist = Math.hypot(gargoyle.x - state.player.x, gargoyle.y - state.player.y);
     const hp0 = state.player.hp;
@@ -305,6 +330,7 @@
   test('a summoner raises minions up to its cap and no further', () => {
     let state = Game.newRun(41);
     state.monsters.length = 0;
+    standClearOf(state, [[150, 0]]);
     const necro = place(state, 'necromancer', 150, 0);
     // Make the hero unkillable so minions persist and the cap is what bounds the count.
     state.player.baseMaxHP = 1e6;
@@ -325,6 +351,7 @@
     const raise = () => {
       let state = Game.newRun(41);
       state.monsters.length = 0;
+      standClearOf(state, [[150, 0]]);
       const necro = place(state, 'necromancer', 150, 0);
       state.player.baseMaxHP = 1e6;
       state.player.hp = 1e6;
