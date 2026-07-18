@@ -126,6 +126,13 @@
   // true when this call started a new dodge, so the authoritative sim can emit the
   // dodge juice that the client instead receives as a server event.
   Game.predictMovement = function (grid, p, input, dt, stats) {
+    // Mouse-look: when the client supplies an aim angle, the hero faces the cursor
+    // every frame — independent of which way it walks. Absent an aim (headless sim,
+    // tests, a pointer that hasn't moved), facing falls back to the travel direction
+    // below. Set before the dodge so a standing-still roll dashes toward the cursor.
+    const aimed = typeof input.aim === 'number' && Number.isFinite(input.aim);
+    if (aimed) p.facing = input.aim;
+
     let dodgeStarted = false;
     if (input.pressed.has('dodge') && p.dodgeCdT <= 0 && p.dodgeT <= 0) {
       const dmx = (input.keys.d ? 1 : 0) - (input.keys.a ? 1 : 0);
@@ -149,7 +156,7 @@
         const len = Math.hypot(mx, my);
         const speed = MOVE_SPEED * stats.moveMult;
         const moved = G.moveCircle(grid, p.x, p.y, PLAYER_R, (mx / len) * speed * dt, (my / len) * speed * dt);
-        if (moved.x !== p.x || moved.y !== p.y) {
+        if (!aimed && (moved.x !== p.x || moved.y !== p.y)) {
           p.facing = Math.atan2(my, mx);
         }
         p.x = moved.x;
@@ -171,7 +178,9 @@
       G.sfx(state, 'dodge');
     }
 
-    // Attack (hold M to keep swinging) — never mid-roll.
+    // Attack (hold the left mouse button to keep swinging) — never mid-roll. The
+    // sim reads the held flag as `keys.space` for historical reasons; the client
+    // now drives it from the mouse. Swings/shots fly along `p.facing` — the cursor.
     if (input.keys.space && p.attackT <= 0 && p.dodgeT <= 0) G.playerAttack(state);
 
     // Active skills (F / G / H).

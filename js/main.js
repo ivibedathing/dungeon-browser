@@ -26,7 +26,10 @@
     mouse: { x: -1, y: -1, click: false, rclick: false },
   };
 
-  const HELD = { KeyW: 'w', KeyA: 'a', KeyS: 's', KeyD: 'd', ArrowUp: 'w', ArrowLeft: 'a', ArrowDown: 's', ArrowRight: 'd', KeyM: 'space' };
+  // `keys.space` is the attack-held flag (named for its original M binding). Attack
+  // now lives on the left mouse button — see the mousedown/mouseup handlers below —
+  // so it's no longer in the keyboard HELD table; WASD/arrows still steer.
+  const HELD = { KeyW: 'w', KeyA: 'a', KeyS: 's', KeyD: 'd', ArrowUp: 'w', ArrowLeft: 'a', ArrowDown: 's', ArrowRight: 'd' };
   const EDGE = {
     Space: 'dodge', KeyE: 'interact', KeyI: 'inv', Tab: 'inv', KeyB: 'inv', KeyR: 'restart',
     KeyQ: 'drink', KeyT: 'portal', KeyN: 'mute', KeyK: 'tree', KeyF: 'skill0', KeyG: 'skill1', KeyH: 'skill2',
@@ -261,9 +264,18 @@
       return;
     }
 
-    // playing
-    if (e.button === 0) input.mouse.click = true;
+    // playing — left button is both a HUD click (belt/skill/inventory, one shot)
+    // and the held attack; right button stays the HUD's drop/abandon click.
+    if (e.button === 0) {
+      input.mouse.click = true;
+      input.keys.space = true;
+    }
     if (e.button === 2) input.mouse.rclick = true;
+  });
+  // Release the attack wherever the button comes up — even off-canvas, so a drag
+  // that leaves the window doesn't leave the hero swinging forever.
+  window.addEventListener('mouseup', (e) => {
+    if (e.button === 0) input.keys.space = false;
   });
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
@@ -298,6 +310,18 @@
     input.mouse.rclick = false;
   }
 
+  // Mouse-look: turn the pointer's screen position into a world-space angle from the
+  // local hero and stash it on `input.aim`. Screen→world inverts the render camera
+  // (render/draw.js: camX = cam.x - view.w/2), so this must run on the same render
+  // state the frame will draw. Skipped until the camera exists and the pointer has
+  // moved; the sim then faces the hero at the cursor and attacks fly that way.
+  function updateAim(rs) {
+    if (!rs || !rs.cam || !rs.player || input.mouse.x < 0) return;
+    const worldX = input.mouse.x + rs.cam.x - view.w / 2;
+    const worldY = input.mouse.y + rs.cam.y - view.h / 2;
+    input.aim = Math.atan2(worldY - rs.player.y, worldX - rs.player.x);
+  }
+
   // ---- Frame ----
   let last = performance.now();
   let frames = 0;
@@ -310,6 +334,7 @@
       clearEdges();
       return;
     }
+    updateAim(state);
     state = Game.update(state, input, dt);
     Game.applyEvents(state, Game.drainEvents(state));
     UI.update(state, input, view);
@@ -327,6 +352,7 @@
     }
     if (input.pressed.has('esc')) { backToMenu(); clearEdges(); return; }
 
+    updateAim(netState);
     net.sendInput(input, nowMs);
     Game.applyEvents(netState, net.takeEvents());
     net.reconcileLocal(netState, nowMs);

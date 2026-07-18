@@ -36,8 +36,24 @@ test('validateClient accepts a well-formed input and normalizes it', () => {
   assert.deepEqual(res.msg.pressed, ['interact']);
 });
 
+test('validateClient accepts an optional mouse-look aim and defaults it to null', () => {
+  const withAim = Protocol.validateClient(goodInput({ aim: -Math.PI / 2 }));
+  assert.equal(withAim.ok, true);
+  assert.equal(withAim.msg.aim, -Math.PI / 2, 'a finite aim rides through untouched');
+
+  const noAim = Protocol.validateClient(goodInput());
+  assert.equal(noAim.ok, true);
+  assert.equal(noAim.msg.aim, null, 'an absent aim normalizes to null, not undefined');
+
+  assert.equal(Protocol.toSimInput(withAim.msg).aim, -Math.PI / 2, 'aim survives into the sim input');
+  assert.equal('aim' in Protocol.toSimInput(noAim.msg), false, 'no aim means the sim faces the travel direction');
+});
+
 test('validateClient rejects malformed inputs field by field', () => {
   const bad = [
+    [goodInput({ aim: NaN }), 'NaN aim'],
+    [goodInput({ aim: Infinity }), 'infinite aim'],
+    [goodInput({ aim: 'north' }), 'non-numeric aim'],
     [{ t: 'nope' }, 'unknown type'],
     [{}, 'missing type'],
     [goodInput({ seq: -1 }), 'negative seq'],
