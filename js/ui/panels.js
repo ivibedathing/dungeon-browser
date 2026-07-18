@@ -326,6 +326,17 @@
     ctx.fillText(`${state.bag.gold} gold`, bp.x + bp.w - 24, bp.y + 34);
     ctx.textAlign = 'left';
 
+    // The main quest's thread through town: one rotating line that reacts to how
+    // far the hero has got. No dialogue system, no new panel.
+    const rumor = Bosses.boardLineFor(state.player && state.player.mainQuest);
+    if (rumor) {
+      ctx.font = `italic 11px ${SERIF}`;
+      ctx.fillStyle = 'rgba(201,161,90,0.8)';
+      ctx.textAlign = 'center';
+      ctx.fillText(rumor, bp.x + bp.w / 2, bp.y + 54);
+      ctx.textAlign = 'left';
+    }
+
     const active = state.quests || [];
     const headers = [
       { text: 'PINNED NOTICES', rect: L.boardOffers[0] },

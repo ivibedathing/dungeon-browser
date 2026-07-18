@@ -3,6 +3,7 @@
   const Game = typeof window !== 'undefined' ? window.Game : require('./core.js');
   const Quests = typeof window !== 'undefined' ? window.Quests : require('../quests.js');
   const Props = typeof window !== 'undefined' ? window.Props : require('../props.js');
+  const Bosses = typeof window !== 'undefined' ? window.Bosses : require('../bosses.js');
   const G = Game._;
   const { TS } = G;
 
@@ -109,7 +110,16 @@
     const p = state.player;
     state.descendT = null; // no descent armed on a fresh floor
     state.cam = { x: p.x, y: p.y };
-    state.fade = { t: 0, dur: 1.6, label: `Floor ${state.floor} — ${dungeon.theme.name}` };
+    // The act banner rides the existing floor-entry fade. It reads the LOCAL
+    // hero's act, not the room's — progress is per-character, so a party can be
+    // on different acts and each sees their own.
+    const banner = Bosses.bannerFor(state.floor, state.player && state.player.mainQuest);
+    state.fade = {
+      t: 0,
+      dur: banner ? 2.4 : 1.6,
+      label: `Floor ${state.floor} — ${dungeon.theme.name}`,
+      sub: banner || null,
+    };
   }
   G.makeFloorState = makeFloorState;
 

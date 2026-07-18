@@ -80,6 +80,16 @@
         ctx.strokeStyle = '#6e5433';
         ctx.lineWidth = 2;
         ctx.strokeRect(bx - 2, by - 2, bw + 4, 18);
+        // Phase pips: one notch per threshold, lit as the ladder is climbed. An
+        // act boss changing stance should read as progress, not confusion.
+        if (boss.phases && boss.phases.length) {
+          for (let i = 0; i < boss.phases.length; i++) {
+            const px = bx + bw * boss.phases[i].at;
+            const lit = (boss.phaseIdx || 0) > i;
+            ctx.fillStyle = lit ? '#ffd84d' : 'rgba(0,0,0,0.55)';
+            ctx.fillRect(px - 1, by - 3, 2, 20);
+          }
+        }
       }
     }
 
@@ -143,6 +153,14 @@
         ctx.fillText(state.fade.label, view.w / 2 + 2, view.h * 0.38 + 2);
         ctx.fillStyle = '#d9c06a';
         ctx.fillText(state.fade.label, view.w / 2, view.h * 0.38);
+        // Act banner: the main quest's only prose on the world screen.
+        if (state.fade.sub) {
+          ctx.font = `bold 19px ${SERIF}`;
+          ctx.fillStyle = 'rgba(0,0,0,0.8)';
+          ctx.fillText(state.fade.sub, view.w / 2 + 2, view.h * 0.38 + 32 + 2);
+          ctx.fillStyle = '#ff9a3d';
+          ctx.fillText(state.fade.sub, view.w / 2, view.h * 0.38 + 32);
+        }
         ctx.textAlign = 'left';
         ctx.globalAlpha = 1;
       }

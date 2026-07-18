@@ -136,6 +136,38 @@
   Bosses.isActBossFloor = (floor) => !!Bosses.bossForFloor(floor);
   Bosses.isFinalFloor = (floor) => (floor | 0) === Bosses.FINAL_FLOOR;
 
+  // ---- Presentation derivations (pure; the renderers just print these) ----
+
+  // What the floor-entry banner says, given the floor and the LOCAL hero's
+  // progress. Acts announce themselves on their first floor; a boss floor names
+  // the boss instead, because that is the more urgent fact. Null means "nothing
+  // to add" and the caller keeps the plain floor label.
+  Bosses.bannerFor = function (floor, mq) {
+    const a = Bosses.actForFloor(floor);
+    if (!a) return null; // past the main quest: no act, plain floor label
+    if (a.bossFloor === (floor | 0)) {
+      const slain = mq && Array.isArray(mq.slain) && mq.slain.includes(a.act);
+      if (slain) return null; // already beaten; do not re-announce a cleared boss
+      return a.final ? `${a.boss.name} — ${a.boss.epithet}` : `${a.boss.name} waits below`;
+    }
+    if (a.from === (floor | 0)) return `Act ${ROMAN[a.act]} — ${a.title}`;
+    return null;
+  };
+
+  // The notice board's rotating line, reacting to how far the hero has got.
+  Bosses.boardLineFor = function (mq) {
+    if (!mq) return Bosses.ACTS[0].board;
+    if (mq.complete) return Bosses.ACTS[Bosses.ACTS.length - 1].done;
+    const a = Bosses.actByNumber(mq.act);
+    if (!a) return Bosses.ACTS[0].board;
+    // Lead with the last victory when one exists, then the current job.
+    const prev = Bosses.actByNumber(a.act - 1);
+    return prev ? `${prev.done} ${a.board}` : a.board;
+  };
+
+  const ROMAN = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV', 5: 'V', 6: 'VI' };
+  Bosses.ROMAN = ROMAN;
+
   // Every act boss still standing, in order — the main quest's checklist.
   Bosses.allBossFloors = () => Bosses.ACTS.map((a) => a.bossFloor);
 
