@@ -159,6 +159,10 @@
       boardOpen: false,
       milestones: [],
       events: [],
+      statsOpen: false,
+      // Set once the finished run's tally has been folded into the lifetime
+      // total, so the stats panel stops adding the run on top of it.
+      statsBanked: false,
     };
     makeFloorState(state);
     G.message(state, 'The dungeon hungers. Descend. (WASD to move, SPACE to swing)');
@@ -187,6 +191,8 @@
     p.baseDamage = sp.baseDamage || 0;
     p.skillPoints = sp.skillPoints || 0;
     p.skills = sp.skills || {};
+    // A save written before stats existed restores a zeroed sheet, not undefined.
+    p.stats = Stats.sanitize(sp.stats);
     if (sp.equip) {
       for (const key of Object.keys(p.equip)) {
         p.equip[key] = sp.equip[key] || null;

@@ -45,7 +45,7 @@
     // Controls hint (top left) + portal status.
     ctx.font = `10px ${SANS}`;
     ctx.fillStyle = 'rgba(215,200,175,0.45)';
-    ctx.fillText('WASD move · Mouse aim · Click attack · SPACE dodge · F/G/H skills · K skill tree · E pick up / buy / read · 1-4 potions · T town portal · I inventory · N sound', 12, 20);
+    ctx.fillText('WASD move · Mouse aim · Click attack · SPACE dodge · F/G/H skills · K skill tree · C stats · E pick up / buy / read · 1-4 potions · T town portal · I inventory · N sound', 12, 20);
     if (state.portalCdT > 0) {
       ctx.fillStyle = 'rgba(140,175,230,0.7)';
       ctx.fillText(`Portal ready in ${Math.ceil(state.portalCdT)}s`, 12, 35);
@@ -127,6 +127,7 @@
     }
     if (state.treeOpen) I.drawTree(ctx, state, view, L);
     if (state.boardOpen) I.drawBoard(ctx, state, view, L);
+    if (state.statsOpen) I.drawStats(ctx, state, view, L);
     I.drawTooltip(ctx, state, view);
 
     // Floor-transition fade + title card.
@@ -178,11 +179,24 @@
             ctx.fillText(`Deepest venture: Floor ${rec.bestFloor} · Level ${rec.bestLevel}`, view.w / 2, view.h * 0.42 + 58);
           }
         }
+        // The run's tally, three figures to a line, under the epitaph.
+        const run = Stats.sanitize(state.player.stats);
+        const summary = [
+          ['Squares walked', 'tiles'], ['Sword swings', 'swings'], ['Shots loosed', 'shots'],
+          ['Items picked up', 'items'], ['Quests completed', 'quests'], ['Damage dealt', 'dealt'],
+        ];
+        ctx.font = `11px ${SANS}`;
+        ctx.fillStyle = 'rgba(201,179,126,0.6)';
+        for (let i = 0; i < summary.length; i += 3) {
+          const line = summary.slice(i, i + 3).map(([label, key]) => `${label} ${Stats.format(run[key])}`).join('   ·   ');
+          ctx.fillText(line, view.w / 2, view.h * 0.42 + 84 + (i / 3) * 17);
+        }
+
         const pulse = 0.55 + 0.45 * Math.sin(state.time * 3);
         ctx.globalAlpha = pulse;
         ctx.font = `bold 15px ${SANS}`;
         ctx.fillStyle = '#efe6d2';
-        ctx.fillText('Press R to rise again', view.w / 2, view.h * 0.42 + 76);
+        ctx.fillText('Press R to rise again', view.w / 2, view.h * 0.42 + 138);
         ctx.globalAlpha = 1;
         ctx.textAlign = 'left';
       }

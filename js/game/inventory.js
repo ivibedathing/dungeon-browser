@@ -21,6 +21,7 @@
     }
     if (!best) return;
     if (Items.addItem(p.bag, best.item)) {
+      Stats.bump(p, 'items');
       state.groundItems.splice(state.groundItems.indexOf(best), 1);
       G.message(state, `Picked up ${best.item.name}.`, best.item.color);
       G.floatText(state, p.x, p.y - 26, best.item.name, best.item.color, 13);
@@ -34,6 +35,7 @@
   function applyPotion(state, potion) {
     const p = state.player;
     const stats = Entities.effectiveStats(p);
+    Stats.bump(p, 'potions');
     if (potion.kind === 'mana') {
       p.mana = Math.min(stats.maxMana, (p.mana || 0) + potion.mana);
       G.burst(state, p.x, p.y, '#5b8ee8', 10, 80);

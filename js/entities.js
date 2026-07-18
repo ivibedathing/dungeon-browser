@@ -3,6 +3,7 @@
   const Items = typeof require === 'function' ? require('./items.js') : window.Items;
   const Skills = typeof require === 'function' ? require('./skills.js') : window.Skills;
   const Balance = typeof require === 'function' ? require('./balance.js') : window.Balance;
+  const Stats = typeof require === 'function' ? require('./stats.js') : window.Stats;
 
   const E = {};
 
@@ -42,6 +43,9 @@
       // Each hero owns their bag (co-op: instanced loot goes to p.bag). Solo/local
       // play reads it through the state.bag alias, so the save format is unchanged.
       bag: Items.createBag(),
+      // This run's tally sheet. Per-player like the bag, so in co-op each hero
+      // counts their own swings and spoils.
+      stats: Stats.create(),
     };
   };
 

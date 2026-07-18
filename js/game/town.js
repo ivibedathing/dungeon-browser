@@ -118,6 +118,7 @@
 
   G.descend = function descend(state) {
     state.floor++;
+    for (const pl of state.players) Stats.bump(pl, 'floors');
     G.makeFloorState(state);
     G.questDepth(state);
     G.message(state, `You descend to floor ${state.floor}. The air grows heavier...`, '#c9b37e');
@@ -302,6 +303,8 @@
     const p = state.player;
     state.quests.splice(index, 1);
     state.bag.gold += q.reward.gold;
+    Stats.bump(p, 'quests');
+    Stats.bump(p, 'gold', q.reward.gold);
     G.message(state, `${q.title} — paid ${q.reward.gold} gold and ${q.reward.xp} experience.`, '#ffd84d');
     G.floatText(state, p.x, p.y - 30, `+${q.reward.gold} gold`, '#ffd84d', 14);
     G.burst(state, p.x, p.y, '#ffd84d', 18, 120);

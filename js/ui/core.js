@@ -87,6 +87,9 @@
       };
     }
 
+    // Tally sheet: one column of labels, then the run and lifetime figures.
+    const statsPanel = { x: (w - 520) / 2, y: (h - 512) / 2 - 8, w: 520, h: 512 };
+
     return {
       orb: { cx: 76, cy: h - 52, r: 40 },
       manaOrb: { cx: w - 76, cy: h - 52, r: 40 },
@@ -111,6 +114,7 @@
       treePanel,
       treeCards,
       branchOrder,
+      statsPanel,
     };
   };
 
