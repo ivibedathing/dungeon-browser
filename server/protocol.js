@@ -45,9 +45,18 @@ const KEY_SET = new Set(P.KEYS);
 const EDGE_SET = new Set(P.EDGES);
 
 // Budgets are per connection. Inputs get 30 Hz plus burst slack for jitter and
-// catch-up; everything else is a control message and should be rare.
+// catch-up; everything else is a control message and should be rare. Auth is the
+// strictest — a login/register attempt is deliberately expensive server-side
+// (scrypt), so a flood of them is throttled hardest.
 P.INPUT_LIMIT = Object.freeze({ capacity: 90, refillPerSec: 45 });
 P.CONTROL_LIMIT = Object.freeze({ capacity: 20, refillPerSec: 2 });
+P.AUTH_LIMIT = Object.freeze({ capacity: 8, refillPerSec: 0.2 });
+
+// Account/character bounds.
+P.MAX_SLOT = 7; // eight character slots, 0..7
+P.MAX_PASSWORD = 128;
+P.MIN_PASSWORD = 8;
+const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
 
 P.ERR = Object.freeze({
   BAD_MESSAGE: 'bad_message',
@@ -55,7 +64,11 @@ P.ERR = Object.freeze({
   NO_ROOM: 'no_room',
   ROOM_FULL: 'room_full',
   NOT_JOINED: 'not_joined',
+  NOT_AUTHED: 'not_authed',
 });
+
+// Which message types are authentication attempts (the strict bucket).
+P.AUTH_TYPES = Object.freeze(new Set(['register', 'login', 'resume']));
 
 // ---- Framing ----
 
@@ -177,6 +190,56 @@ function validateJoin(msg) {
   return { ok: true, msg: { t: 'join', name, shirt, code } };
 }
 
+// Usernames are the account key: a tight charset, case preserved for display but
+// uniqueness enforced case-insensitively downstream.
+function cleanUsername(v) {
+  if (typeof v !== 'string' || !USERNAME_RE.test(v)) return undefined;
+  return v;
+}
+
+// Passwords are validated but NEVER echoed, logged, or normalized beyond a length
+// check — the raw bytes go straight to scrypt.
+function checkPassword(v) {
+  return typeof v === 'string' && v.length >= P.MIN_PASSWORD && v.length <= P.MAX_PASSWORD;
+}
+
+function checkSlot(v) {
+  return Number.isInteger(v) && v >= 0 && v <= P.MAX_SLOT;
+}
+
+function validateRegister(msg) {
+  const username = cleanUsername(msg.username);
+  if (username === undefined) return fail('bad username');
+  if (!checkPassword(msg.password)) return fail('bad password');
+  const name = cleanName(msg.name);
+  if (name === undefined) return fail('bad name');
+  const shirt = cleanShirt(msg.shirt);
+  if (shirt === undefined) return fail('bad shirt');
+  return { ok: true, msg: { t: 'register', username, password: msg.password, name, shirt } };
+}
+
+function validateLogin(msg) {
+  const username = cleanUsername(msg.username);
+  if (username === undefined) return fail('bad username');
+  if (!checkPassword(msg.password)) return fail('bad password');
+  return { ok: true, msg: { t: 'login', username, password: msg.password } };
+}
+
+function validateResume(msg) {
+  // Tokens are base64url of 32 bytes (~43 chars); bound generously and reject junk.
+  if (typeof msg.token !== 'string' || msg.token.length < 20 || msg.token.length > 200) return fail('bad token');
+  return { ok: true, msg: { t: 'resume', token: msg.token } };
+}
+
+function validateCreateChar(msg) {
+  if (!checkSlot(msg.slot)) return fail('bad slot');
+  const name = cleanName(msg.name);
+  if (name === undefined) return fail('bad name');
+  const shirt = cleanShirt(msg.shirt);
+  if (shirt === undefined) return fail('bad shirt');
+  return { ok: true, msg: { t: 'createChar', slot: msg.slot, name, shirt, imported: msg.imported === true } };
+}
+
 // The single gate every client frame passes through.
 P.validateClient = function (msg) {
   if (!isPlainObject(msg)) return fail('not an object');
@@ -187,6 +250,20 @@ P.validateClient = function (msg) {
       return validateJoin(msg);
     case 'ping':
       return isFiniteNumber(msg.ts) ? { ok: true, msg: { t: 'ping', ts: msg.ts } } : fail('bad ping ts');
+    case 'register':
+      return validateRegister(msg);
+    case 'login':
+      return validateLogin(msg);
+    case 'resume':
+      return validateResume(msg);
+    case 'listChars':
+      return { ok: true, msg: { t: 'listChars' } };
+    case 'createChar':
+      return validateCreateChar(msg);
+    case 'selectChar':
+      return checkSlot(msg.slot) ? { ok: true, msg: { t: 'selectChar', slot: msg.slot } } : fail('bad slot');
+    case 'deleteChar':
+      return checkSlot(msg.slot) ? { ok: true, msg: { t: 'deleteChar', slot: msg.slot } } : fail('bad slot');
     default:
       return fail('unknown message type');
   }
