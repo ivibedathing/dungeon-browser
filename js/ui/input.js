@@ -35,6 +35,25 @@
       return;
     }
 
+    // World map: click an unlocked waystone to travel to it. Locked and merely
+    // discovered pins are inert — a waystone has to be touched once on foot.
+    if (state.mapOpen) {
+      const ML = I.worldMapLayout(view);
+      const worldTiles = state.world && state.world.world ? state.world.world.width : 2048;
+      for (const pin of I.worldMapPins(state)) {
+        if (pin.kind !== 'waystone') continue;
+        const pt = I.worldMapPoint(ML, pin.x, pin.y, worldTiles);
+        if (Math.hypot(mx - pt.x, my - pt.y) > 9) continue;
+        state.hover = { text: pin.label, x: mx, y: my };
+        const target = I.waystoneAt(state, pin.x, pin.y);
+        if (input.mouse.click && target && target.unlocked) {
+          Game.useWaystone(state, target);
+          state.mapOpen = false;
+        }
+      }
+      return;
+    }
+
     // Belt is always live.
     for (let i = 0; i < L.belt.length; i++) {
       if (I.inRect(mx, my, L.belt[i])) {

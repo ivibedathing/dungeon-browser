@@ -31,9 +31,16 @@
     I.drawDescentBanner(ctx, state, view);
 
     // Location title (top center).
-    const locLabel = state.inTown
-      ? 'Ashfall Camp — Town'
-      : `Floor ${state.floor} — ${state.dungeon.theme.name}`;
+    // Out in the world the place-name is the biome, and the ring stands in for
+    // depth — how far from Ashfall is the one axis danger runs along out here.
+    let locLabel;
+    if (state.inTown) locLabel = 'Ashfall Camp — Town';
+    else if (state.inWorld) {
+      const World = typeof window !== 'undefined' ? window.World : require('../world.js');
+      const c = World.chunkOf(Math.floor(state.player.x / Dungeon.TILE_SIZE), Math.floor(state.player.y / Dungeon.TILE_SIZE));
+      const ring = World.ringOf(c.cx, c.cy);
+      locLabel = ring === 0 ? 'Ashfall Camp' : `${state.dungeon.theme.name} — ${ring} from home`;
+    } else locLabel = `Floor ${state.floor} — ${state.dungeon.theme.name}`;
     ctx.font = `bold 15px ${SERIF}`;
     ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(0,0,0,0.5)';

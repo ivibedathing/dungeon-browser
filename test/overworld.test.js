@@ -465,3 +465,232 @@ test('props and roadside braziers stream in and out with their chunk', () => {
   for (const pr of s.props) assert.ok(s.world.active.has(pr.chunk), 'a prop survived deactivation');
   void before;
 });
+
+// ---- Phase 4: places — town, mouths, waystones ----
+
+test('Ashfall Camp is stamped into the middle chunk with all four fixtures', () => {
+  const w = World.create(4242);
+  const camp = World.town(w);
+  for (const key of ['entry', 'well', 'vendor', 'smith', 'board']) {
+    assert.ok(camp[key], `camp is missing ${key}`);
+    assert.ok(D.isWalkable(w.grid[camp[key].y][camp[key].x]) || w.grid[camp[key].y][camp[key].x] === D.TILE.ENTRY,
+      `${key} stands on impassable ground`);
+  }
+  // It is where the town chunk is, not at the origin.
+  const c = World.chunkOf(camp.well.x, camp.well.y);
+  assert.equal(c.cx, World.TOWN_CX);
+  assert.equal(c.cy, World.TOWN_CY);
+  // The stamped plaza matches the standalone town's layout exactly — same
+  // generator, so the vendor/smith/board UI carries over untouched.
+  const solo = D.generateTown(4242);
+  assert.equal(camp.vendor.x - camp.well.x, solo.vendor.x - solo.well.x);
+  assert.equal(camp.board.y - camp.well.y, solo.board.y - solo.well.y);
+});
+
+test('the camp services fire from proximity out in the world, exactly as in town', () => {
+  let s = worldRun();
+  const camp = World.town(s.world.world);
+  s.player.x = (camp.vendor.x + 0.5) * TS;
+  s.player.y = (camp.vendor.y + 0.5) * TS;
+  s = pump(s, 2);
+  assert.equal(s.trading, true, 'standing at the stall does not open trade');
+  assert.ok(s.shop && s.shop.length === 3, 'Grizzle has no stock out here');
+
+  s.player.x = (camp.smith.x + 0.5) * TS;
+  s.player.y = (camp.smith.y + 0.5) * TS;
+  s = pump(s, 2);
+  assert.equal(s.smithing, true, 'the anvil is cold');
+
+  s.player.x = (camp.board.x + 0.5) * TS;
+  s.player.y = (camp.board.y + 0.5) * TS;
+  s = pump(s, 2);
+  assert.equal(s.questing, true, 'the notice board is unreadable');
+  assert.ok(s.board, 'no notices are posted');
+
+  // And the well still mends you.
+  s.player.x = (camp.well.x + 0.5) * TS;
+  s.player.y = (camp.well.y + 0.5) * TS;
+  s.player.hp = 5;
+  s = pump(s, 2);
+  assert.ok(s.player.hp > 5, 'the well did not heal');
+});
+
+test('mouths carry their own dungeon seed and a ring-scaled starting floor', () => {
+  const w = World.create(4242);
+  for (let cy = 0; cy < World.CHUNKS; cy++) {
+    for (let cx = 0; cx < World.CHUNKS; cx++) World.ensureChunk(w, cx, cy);
+  }
+  const pois = Object.values(w.pois);
+  const mouths = pois.filter((p) => p.kind === 'mouth');
+  const stones = pois.filter((p) => p.kind === 'waystone');
+  assert.ok(mouths.length > 20, `only ${mouths.length} mouths in the whole world`);
+  assert.ok(stones.length > 5, `only ${stones.length} waystones in the whole world`);
+
+  const seeds = new Set(mouths.map((m) => m.dungeonSeed));
+  assert.ok(seeds.size > mouths.length * 0.9, 'mouths are sharing dungeon seeds');
+  for (const m of mouths) {
+    assert.equal(w.grid[m.y][m.x], D.TILE.STAIRS_DOWN, 'a mouth did not write its tile');
+    assert.ok(m.floor >= 1, 'a mouth has no starting floor');
+    // A mouth is never deeper than its ring warrants. The safe ring is the one
+    // exception: it spawns no monsters, but a hole there is a starter dungeon.
+    assert.ok(m.floor <= Math.max(1, World.effectiveFloor(m.ring)), 'a mouth is deeper than its ring');
+  }
+  // Deeper mouths lie further out.
+  const near = mouths.filter((m) => m.ring <= 4);
+  const far = mouths.filter((m) => m.ring >= 12);
+  const avg = (a) => a.reduce((t, m) => t + m.floor, 0) / a.length;
+  assert.ok(avg(far) > avg(near), 'mouth depth does not scale with distance from home');
+});
+
+test('a mouth roll never lands on the same tile as anything else in its chunk', () => {
+  const w = World.create(4242);
+  World.ensureAround(w, 20, 20, 2);
+  for (let cy = 18; cy <= 22; cy++) {
+    for (let cx = 18; cx <= 22; cx++) {
+      const poi = w.pois[World.chunkKey(cx, cy)];
+      if (!poi) continue;
+      const content = World.rollChunkContent(w, cx, cy);
+      for (const m of content.monsters) assert.ok(!(m.x === poi.x && m.y === poi.y), 'a monster spawned on a POI tile');
+      for (const p of content.props) assert.ok(!(p.x === poi.x && p.y === poi.y), 'a prop spawned on a POI tile');
+    }
+  }
+});
+
+test('stepping into a mouth dives, and the portal home restores the world intact', () => {
+  let s = worldRun();
+  // Find a mouth and stand on it.
+  const world = s.world.world;
+  World.ensureAround(world, World.TOWN_CX, World.TOWN_CY, 4);
+  const entry = Object.entries(world.pois).find(([, p]) => p.kind === 'mouth');
+  assert.ok(entry, 'no mouth near the camp to dive into');
+  const mouth = entry[1];
+  s.player.x = (mouth.x + 0.5) * TS;
+  s.player.y = (mouth.y + 0.5) * TS;
+  // Remember what the world looked like so the round trip can be checked.
+  const worldRef = s.world;
+  const exploredRef = s.explored;
+
+  s = pump(s, 2);
+  assert.equal(s.inWorld, false, 'the hero never went down');
+  assert.equal(s.floor, mouth.floor, 'arrived on the wrong floor');
+  assert.equal(s.dungeonSeed, mouth.dungeonSeed, 'the mouth’s dungeon seed was not used');
+  assert.ok(s.stash && s.stash.overworld, 'the overworld was not stashed');
+  assert.equal(s.dungeon.overworld, undefined, 'still standing on the overworld level');
+  assert.ok(s.dungeon.width === 120, 'a real dungeon floor should have been generated');
+
+  // Descend a few floors — the stash must survive the churn beneath it.
+  for (let i = 0; i < 3; i++) G.descend(s);
+  assert.ok(s.stash && s.stash.overworld, 'the stash was lost descending');
+
+  // Portal out.
+  G.travel(s, { kind: 'town' });
+  assert.equal(s.inWorld, true, 'the portal did not return us to the surface');
+  assert.equal(s.world, worldRef, 'the world object was replaced');
+  assert.equal(s.explored, exploredRef, 'the explored map was lost');
+  assert.equal(s.stash, null);
+  // And we are standing back at the mouth we went down.
+  assert.ok(Math.hypot(s.player.x - (mouth.x + 0.5) * TS, s.player.y - (mouth.y + 0.5) * TS) < 3 * TS,
+    'did not surface at the mouth');
+});
+
+test('two different mouths lead to two different dungeons', () => {
+  const w = World.create(4242);
+  for (let cy = 10; cy < 24; cy++) {
+    for (let cx = 10; cx < 24; cx++) World.ensureChunk(w, cx, cy);
+  }
+  const mouths = Object.values(w.pois).filter((p) => p.kind === 'mouth');
+  const a = D.generateDungeon(mouths[0].dungeonSeed, 3);
+  const b = D.generateDungeon(mouths[1].dungeonSeed, 3);
+  assert.notDeepEqual(a.entry, b.entry, 'two mouths generated the same floor');
+  // And the same mouth always leads to the same place.
+  assert.deepEqual(D.generateDungeon(mouths[0].dungeonSeed, 3).entry, a.entry);
+});
+
+test('a waystone unlocks on touch, not on sight, and then warps', () => {
+  let s = worldRun();
+  const world = s.world.world;
+  World.ensureAround(world, World.TOWN_CX, World.TOWN_CY, 6);
+  const found = Object.entries(world.pois).filter(([, p]) => p.kind === 'waystone');
+  assert.ok(found.length >= 2, 'need two waystones near home for this test');
+  const [keyA, stoneA] = found[0];
+  const [, stoneB] = found[1];
+
+  // Seen from a distance: found, but still asleep.
+  s.player.x = (stoneA.x + 0.5) * TS + 10 * TS;
+  s.player.y = (stoneA.y + 0.5) * TS;
+  s = pump(s, 2);
+  assert.equal(s.world.pois[keyA].found, true, 'the waystone was not spotted');
+  assert.equal(s.world.pois[keyA].unlocked, false, 'it woke without being touched');
+  assert.equal(G.unlockedWaystones(s).length, 0);
+
+  // Walk onto it.
+  s.player.x = (stoneA.x + 0.5) * TS;
+  s.player.y = (stoneA.y + 0.5) * TS;
+  s = pump(s, 2);
+  assert.equal(s.world.pois[keyA].unlocked, true, 'touching it did not wake it');
+  assert.equal(G.unlockedWaystones(s).length, 1);
+
+  // Warping to a stone that is merely discovered is refused.
+  s.player.x = (stoneB.x + 0.5) * TS;
+  s.player.y = (stoneB.y + 0.5) * TS;
+  s = pump(s, 2);
+  const recB = G.unlockedWaystones(s).find((p) => p.x === stoneB.x && p.y === stoneB.y);
+  assert.ok(recB, 'the second stone should now be unlocked too');
+
+  // Warp back to the first, keeping the map and the discoveries.
+  const exploredRef = s.explored;
+  const ok = Game.useWaystone(s, s.world.pois[keyA]);
+  assert.equal(ok, true, 'the warp was refused');
+  assert.ok(Math.hypot(s.player.x - (stoneA.x + 0.5) * TS, s.player.y - (stoneA.y + 0.5) * TS) < 4 * TS,
+    'the warp did not land at the stone');
+  assert.equal(s.explored, exploredRef, 'the warp wiped the map');
+  assert.equal(s.world.pois[keyA].unlocked, true, 'the warp forgot the discoveries');
+  assert.equal(s.inWorld, true);
+});
+
+test('a locked waystone cannot be warped to', () => {
+  const s = worldRun();
+  assert.equal(Game.useWaystone(s, { kind: 'waystone', x: 100, y: 100, unlocked: false }), false);
+  assert.equal(Game.useWaystone(s, null), false);
+});
+
+test('the map pins what has been found, and only what has been found', () => {
+  const UI = require('../js/ui.js');
+  const I = UI._;
+  let s = worldRun();
+  // Nothing discovered yet beyond the camp itself.
+  let pins = I.worldMapPins(s);
+  assert.equal(pins.filter((p) => p.kind === 'mouth').length, 0);
+  assert.equal(pins.filter((p) => p.kind === 'town').length, 1);
+
+  const world = s.world.world;
+  World.ensureAround(world, World.TOWN_CX, World.TOWN_CY, 4);
+  const mouth = Object.values(world.pois).find((p) => p.kind === 'mouth');
+  s.player.x = (mouth.x + 0.5) * TS;
+  s.player.y = (mouth.y + 0.5) * TS - 6 * TS;
+  s = pump(s, 2);
+  pins = I.worldMapPins(s);
+  const pin = pins.find((p) => p.kind === 'mouth');
+  assert.ok(pin, 'a mouth we are standing next to is not on the map');
+  assert.equal(pin.x, mouth.x);
+  assert.equal(pin.y, mouth.y);
+});
+
+test('the town portal fizzles under open sky — the camp is a place you walk to', () => {
+  const s = worldRun();
+  G.castPortal(s, s.player);
+  assert.equal(s.portals.length, 0, 'a portal opened in the overworld');
+});
+
+test('a new solo run begins outside Ashfall Camp, not on a dungeon floor', () => {
+  const s = Game.newSoloRun(1234);
+  assert.equal(s.inWorld, true, 'a new run must start on the continent');
+  assert.equal(s.dungeon.overworld, true);
+  const tx = Math.floor(s.player.x / TS);
+  const ty = Math.floor(s.player.y / TS);
+  assert.ok(D.isWalkable(s.dungeon.grid[ty][tx]), 'the hero starts inside terrain');
+  const camp = World.town(s.world.world);
+  const fromCamp = Math.hypot(tx - camp.entry.x, ty - camp.entry.y);
+  assert.ok(fromCamp < 12, `started ${fromCamp.toFixed(0)} tiles from camp — that is not "outside Ashfall"`);
+  assert.ok(fromCamp > 0, 'started on top of the camp entry');
+});

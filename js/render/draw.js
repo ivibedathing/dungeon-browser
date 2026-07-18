@@ -73,6 +73,15 @@
     // Portals and town fixtures sit on the floor beneath actors.
     for (const po of state.portals) R.drawPortal(ctx, state, po);
     if (state.dungeon.town) R.drawTownFixtures(ctx, state);
+    else if (state.dungeon.overworld && state.world) {
+      // Ashfall is a place in the world now: its fixtures and the landmarks
+      // scattered across the continent draw on the same ground layer.
+      const camp = state.world.world.town;
+      if (camp && camp.well.x >= x0 - 24 && camp.well.x <= x1 + 24 && camp.well.y >= y0 - 24 && camp.well.y <= y1 + 24) {
+        R.drawTownFixtures(ctx, state, camp);
+      }
+      R.drawWorldPOIs(ctx, state, x0, y0, x1, y1);
+    }
 
     // Telegraphs are a GROUND layer: painted before every body so a boss can
     // never stand on top of its own warning. Culled by the telegraph's own tile,

@@ -41,8 +41,11 @@
     }
   };
 
-  R.drawTownFixtures = function drawTownFixtures(ctx, state) {
-    const d = state.dungeon;
+  // `camp` lets the same fixtures be drawn whether Ashfall IS the level (the
+  // classic portal trip) or is a plaza stamped into the middle of the continent.
+  // Both carry their coordinates in the grid the renderer is already drawing.
+  R.drawTownFixtures = function drawTownFixtures(ctx, state, camp) {
+    const d = camp || state.dungeon;
     const t = state.time;
     // Healing well.
     const wx = (d.well.x + 0.5) * TS;
@@ -225,5 +228,57 @@
     ctx.fillStyle = '#ffd84d';
     ctx.fillText(qLabel, qx, qy - 22);
     ctx.textAlign = 'left';
+  };
+
+  // Overworld landmarks: the mouth of a dungeon, and a waystone. Both are drawn
+  // over their own tile, which the world generator has already written as
+  // STAIRS_DOWN or ENTRY, so this is decoration on top of real terrain.
+  R.drawWorldPOIs = function drawWorldPOIs(ctx, state, x0, y0, x1, y1) {
+    const w = state.world;
+    if (!w || !w.world.pois) return;
+    const t = state.time;
+    for (const key of Object.keys(w.world.pois)) {
+      const poi = w.world.pois[key];
+      if (poi.x < x0 || poi.x > x1 || poi.y < y0 || poi.y > y1) continue;
+      const cx = (poi.x + 0.5) * TS;
+      const cy = (poi.y + 0.5) * TS;
+      if (poi.kind === 'mouth') {
+        // A ring of standing stones around a hole that reads as genuinely deep.
+        ctx.fillStyle = 'rgba(10,6,14,0.85)';
+        ctx.beginPath();
+        ctx.ellipse(cx, cy + 2, 15, 11, 0, 0, Math.PI * 2);
+        ctx.fill();
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * Math.PI * 2 + 0.4;
+          ctx.fillStyle = i % 2 ? '#6b6152' : '#5a5145';
+          ctx.fillRect(cx + Math.cos(a) * 17 - 2.5, cy + Math.sin(a) * 12 - 7, 5, 11);
+        }
+        const glow = 0.4 + 0.3 * Math.sin(t * 2 + poi.x);
+        const g = ctx.createRadialGradient(cx, cy, 1, cx, cy, 16);
+        g.addColorStop(0, `rgba(198,107,255,${glow})`);
+        g.addColorStop(1, 'rgba(120,60,200,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 16, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        const rec = w.pois[key];
+        const lit = rec && rec.unlocked;
+        // A monolith: dark until touched, then lit from within.
+        ctx.fillStyle = '#4a5060';
+        ctx.fillRect(cx - 6, cy - 18, 12, 24);
+        ctx.fillStyle = '#5c6474';
+        ctx.fillRect(cx - 6, cy - 18, 4, 24);
+        ctx.fillStyle = lit ? `rgba(127,184,255,${0.55 + 0.35 * Math.sin(t * 3)})` : 'rgba(80,95,120,0.6)';
+        ctx.fillRect(cx - 2.5, cy - 14, 5, 15);
+        if (lit) {
+          const g = ctx.createRadialGradient(cx, cy - 6, 1, cx, cy - 6, 26);
+          g.addColorStop(0, 'rgba(127,184,255,0.22)');
+          g.addColorStop(1, 'rgba(127,184,255,0)');
+          ctx.fillStyle = g;
+          ctx.fillRect(cx - 26, cy - 32, 52, 52);
+        }
+      }
+    }
   };
 })();

@@ -120,8 +120,10 @@
     if (state.dead) {
       state.deathT += dt;
       if (localIn.pressed.has('restart')) {
-        // Headless restart keeps the identity; the browser opens character creation instead.
-        return Game.newRun((Math.random() * 0x7fffffff) | 0, { name: p.name, shirt: p.shirt });
+        // Headless restart keeps the identity; the browser opens character creation
+        // instead. A restarted run begins where a new one does — outside Ashfall.
+        const restart = Game.newSoloRun || Game.newRun;
+        return restart((Math.random() * 0x7fffffff) | 0, { name: p.name, shirt: p.shirt });
       }
       return state;
     }
@@ -272,9 +274,13 @@
       return true;
     }
 
-    // Town comforts: the healing well and the vendor's trade range.
-    if (state.inTown) {
-      const d = state.dungeon;
+    // Town comforts: the healing well and the vendor's trade range. Ashfall is
+    // either the whole level (the classic portal trip) or a plaza stamped into
+    // the middle of the continent — the fixtures carry world coords either way,
+    // so the proximity checks below are identical.
+    const camp = state.inTown ? state.dungeon : state.inWorld && state.world ? state.world.world.town : null;
+    if (camp) {
+      const d = camp;
       const wx = (d.well.x + 0.5) * TS;
       const wy = (d.well.y + 0.5) * TS;
       if (p.hp < stats.maxHP && U.dist2(p.x, p.y, wx, wy) < 30 * 30) {
@@ -331,8 +337,19 @@
       const ptx = Math.floor(p.x / TS);
       const pty = Math.floor(p.y / TS);
       if (state.dungeon.grid[pty] && state.dungeon.grid[pty][ptx] === Dungeon.TILE.STAIRS_DOWN) {
-        G.descend(state);
-        return true;
+        // The same tile means two different things depending on where you are
+        // standing: underground it is the way deeper, out in the world it is the
+        // mouth of a dungeon that has its own seed and its own starting floor.
+        if (state.inWorld) {
+          const poi = G.mouthAt(state, ptx, pty);
+          if (poi) {
+            Game.enterMouth(state, poi);
+            return true;
+          }
+        } else {
+          G.descend(state);
+          return true;
+        }
       }
     }
 

@@ -20,8 +20,10 @@
   }
 
   G.castPortal = function castPortal(state, p = state.player) {
-    if (state.inTown) {
-      G.message(state, 'The portal magic fizzles here — you are already safe.', '#8fa8d0');
+    if (state.inTown || state.inWorld) {
+      // Out on the continent there is nowhere to portal TO: the camp is a place
+      // in the world, reached on foot or by waystone.
+      G.message(state, 'The portal magic fizzles here — you are already under open sky.', '#8fa8d0');
       return;
     }
     if (state.portalCdT > 0) {
@@ -54,6 +56,14 @@
   G.travel = function travel(state, portal) {
     const p = state.player;
     G.sfx(state, 'travel');
+    // A dungeon entered from the overworld portals back to its mouth, not to a
+    // separate town level — the camp is a place IN the world now, so the surface
+    // is where the shops are. The stash machinery is the same one the town trip
+    // has always used; only the level it holds is different.
+    if (state.stash && state.stash.overworld) {
+      G.leaveMouth(state);
+      return;
+    }
     if (!state.inTown) {
       state.stash = {
         dungeon: state.dungeon,

@@ -35,65 +35,91 @@
 
   D.TOWN_THEME = { name: 'Ashfall Camp', wall: '#403a32', wallEdge: '#262019', floorA: '#55503f', floorB: '#4d4839', torch: '#ffc26e', fog: '#0b0a08' };
 
-  // The safe hub reached through a town portal: open plaza, healing well, vendor. No monsters.
-  D.generateTown = function (seed) {
-    const W = 34;
-    const H = 26;
+  D.TOWN_W = 34;
+  D.TOWN_H = 26;
+
+  // Write Ashfall Camp's plaza into an existing grid at offset (ox, oy) and hand
+  // back its fixtures in that grid's coordinates. Extracted from generateTown so
+  // the camp can be stamped into the overworld at the centre chunk and be the
+  // same place, with the same layout, that the town portal has always led to —
+  // which is what lets the proximity flags in updatePlayerActions and the whole
+  // vendor/smith/board UI carry over untouched.
+  D.stampTown = function (grid, ox, oy, seed) {
+    const W = D.TOWN_W;
+    const H = D.TOWN_H;
     const rng = U.mulberry32(((seed >>> 0) ^ 0x7a3f) >>> 0);
-    const grid = Array.from({ length: H }, () => new Array(W).fill(D.TILE.WALL));
     const plaza = { x: 5, y: 5, w: W - 10, h: H - 10 };
+    const put = (x, y, t) => {
+      if (grid[oy + y] && grid[oy + y][ox + x] !== undefined) grid[oy + y][ox + x] = t;
+    };
     for (let y = plaza.y; y < plaza.y + plaza.h; y++) {
-      for (let x = plaza.x; x < plaza.x + plaza.w; x++) {
-        grid[y][x] = D.TILE.FLOOR;
-      }
+      for (let x = plaza.x; x < plaza.x + plaza.w; x++) put(x, y, D.TILE.FLOOR);
     }
-    const entry = { x: Math.floor(W / 2), y: Math.floor(H / 2) + 4 };
-    const well = { x: plaza.x + 4, y: Math.floor(H / 2) };
-    const vendor = { x: plaza.x + plaza.w - 5, y: Math.floor(H / 2) };
-    const smith = { x: plaza.x + 7, y: plaza.y + plaza.h - 4 };
+    const at = (x, y) => ({ x: ox + x, y: oy + y });
+    const entry = at(Math.floor(W / 2), Math.floor(H / 2) + 4);
+    const well = at(plaza.x + 4, Math.floor(H / 2));
+    const vendor = at(plaza.x + plaza.w - 5, Math.floor(H / 2));
+    const smith = at(plaza.x + 7, plaza.y + plaza.h - 4);
     // The notice board hangs well clear of the stall: their interaction ranges
     // must never overlap, or one E press would try to serve both.
-    const board = { x: plaza.x + plaza.w - 7, y: plaza.y + 3 };
-    grid[entry.y][entry.x] = D.TILE.ENTRY;
+    const board = at(plaza.x + plaza.w - 7, plaza.y + 3);
+    put(entry.x - ox, entry.y - oy, D.TILE.ENTRY);
 
     // Scattered ruined pillars for flavor — single tiles can never split an open plaza.
     for (let k = 0; k < 7; k++) {
       const px = U.randInt(rng, plaza.x + 2, plaza.x + plaza.w - 3);
       const py = U.randInt(rng, plaza.y + 2, plaza.y + plaza.h - 3);
-      const nearSpot = [entry, well, vendor, smith, board].some((s) => Math.hypot(px - s.x, py - s.y) < 3.5);
-      if (!nearSpot) grid[py][px] = D.TILE.WALL;
+      const nearSpot = [entry, well, vendor, smith, board].some((s) => Math.hypot(ox + px - s.x, oy + py - s.y) < 3.5);
+      if (!nearSpot) put(px, py, D.TILE.WALL);
     }
 
     const torches = [];
     for (let x = plaza.x; x < plaza.x + plaza.w; x++) {
       if ((x - plaza.x) % 5 === 2) {
-        torches.push({ x, y: plaza.y - 1 });
-        torches.push({ x, y: plaza.y + plaza.h });
+        torches.push(at(x, plaza.y - 1));
+        torches.push(at(x, plaza.y + plaza.h));
       }
     }
     for (let y = plaza.y; y < plaza.y + plaza.h; y++) {
       if ((y - plaza.y) % 5 === 2) {
-        torches.push({ x: plaza.x - 1, y });
-        torches.push({ x: plaza.x + plaza.w, y });
+        torches.push(at(plaza.x - 1, y));
+        torches.push(at(plaza.x + plaza.w, y));
       }
     }
 
     return {
-      grid,
-      width: W,
-      height: H,
-      rooms: [{ ...plaza, cx: entry.x, cy: entry.y }],
+      plaza: { x: ox + plaza.x, y: oy + plaza.y, w: plaza.w, h: plaza.h, cx: entry.x, cy: entry.y },
       entry,
-      stairs: null,
-      spawns: [],
-      torches,
-      theme: D.TOWN_THEME,
-      floor: 0,
-      town: true,
       well,
       vendor,
       smith,
       board,
+      torches,
+    };
+  };
+
+  // The safe hub reached through a town portal: open plaza, healing well, vendor. No monsters.
+  D.generateTown = function (seed) {
+    const W = D.TOWN_W;
+    const H = D.TOWN_H;
+    const grid = Array.from({ length: H }, () => new Array(W).fill(D.TILE.WALL));
+    const t = D.stampTown(grid, 0, 0, seed);
+    return {
+      grid,
+      width: W,
+      height: H,
+      rooms: [t.plaza],
+      entry: t.entry,
+      stairs: null,
+      spawns: [],
+      torches: t.torches,
+      theme: D.TOWN_THEME,
+      floor: 0,
+      town: true,
+      well: t.well,
+      vendor: t.vendor,
+      smith: t.smith,
+      board: t.board,
     };
   };
 

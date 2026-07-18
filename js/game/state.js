@@ -11,8 +11,13 @@
     // Seeded sim RNG: all gameplay-affecting rolls draw from this stream so a
     // room's outcome is a pure function of (runSeed, floor, inputs). Cosmetic
     // randomness (particle scatter, shake jitter) stays on Math.random.
-    state.srand = U.mulberry32((((state.runSeed >>> 0) ^ Math.imul(state.floor, 2654435761)) >>> 0) + 1);
-    const dungeon = Dungeon.generateDungeon(state.runSeed, state.floor);
+    // Which dungeon this is. Every mouth in the overworld carries its own seed,
+    // so the same hole always leads to the same place and two mouths never lead
+    // to the same one. Absent (the classic descent from floor 1) it is the run
+    // seed, exactly as before.
+    const dungeonSeed = state.dungeonSeed === undefined || state.dungeonSeed === null ? state.runSeed : state.dungeonSeed;
+    state.srand = U.mulberry32((((dungeonSeed >>> 0) ^ Math.imul(state.floor, 2654435761)) >>> 0) + 1);
+    const dungeon = Dungeon.generateDungeon(dungeonSeed, state.floor);
     state.dungeon = dungeon;
     state.explored = Array.from({ length: dungeon.height }, () => new Array(dungeon.width).fill(false));
     // Party size for this floor: the room stamps state.partyN; solo is one player ⇒ n=1
@@ -78,7 +83,11 @@
     state.floatTexts = [];
     state.projectiles = [];
     state.portals = [];
-    state.stash = null;
+    // A fresh floor abandons a stashed floor — but NOT a stashed overworld. The
+    // continent is the outer level and dungeon floors are the inner churn, so it
+    // has to survive every descent beneath it; dropping it here would strand the
+    // hero underground with no way back to the surface.
+    if (!(state.stash && state.stash.overworld)) state.stash = null;
     state.inTown = false;
     state.inWorld = false; // a dungeon floor is never the overworld
     state.shop = null;

@@ -200,6 +200,12 @@
     respawnSeconds: 240, // a cleared chunk stays cleared this long
     leashTiles: 16, // how far a monster strays from home before it gives up and walks back
 
+    // One POI roll per chunk, so a mouth and a waystone can never contend for
+    // the same tile. Mouths are the reason to roam; waystones are what makes a
+    // 65,536-px world crossable more than once.
+    mouthChance: 0.16,
+    waystoneChance: 0.05,
+
     propsPerChunk: { min: 0, max: 3 },
     torchChance: 0.35, // odds a chunk gets a roadside brazier
   };

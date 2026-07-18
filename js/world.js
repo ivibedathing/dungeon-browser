@@ -227,7 +227,19 @@
       height: World.SIZE,
       grid: Array.from({ length: World.SIZE }, () => new Uint8Array(World.SIZE)),
       gen: new Uint8Array(World.CHUNKS * World.CHUNKS),
+      pois: {}, // chunkKey -> the mouth or waystone written into that chunk
+      town: null,
     };
+  };
+
+  // Where the camp sits inside its chunk — centred, so the plaza has open
+  // country on every side rather than butting against a chunk border.
+  World.TOWN_OFF = { x: (World.CHUNK - D.TOWN_W) >> 1, y: (World.CHUNK - D.TOWN_H) >> 1 };
+
+  // The camp's fixtures, generating its chunk if that has not happened yet.
+  World.town = function (world) {
+    if (!world.town) World.ensureChunk(world, World.TOWN_CX, World.TOWN_CY);
+    return world.town;
   };
 
   World.isGenerated = (world, cx, cy) => World.inBounds(cx, cy) && !!world.gen[World.chunkKey(cx, cy)];
@@ -267,7 +279,20 @@
       }
     }
 
-    if (World.onChunk) World.onChunk(world, cx, cy, { x0, y0, x1, y1 });
+    // Ashfall Camp is written into the middle chunk, over the terrain and the
+    // roads, so the roads arrive at the plaza edge and the camp itself is clear.
+    if (cx === World.TOWN_CX && cy === World.TOWN_CY) {
+      world.town = D.stampTown(world.grid, x0 + World.TOWN_OFF.x, y0 + World.TOWN_OFF.y, seed);
+    }
+
+    // Points of interest are terrain, not content: the tile is written into the
+    // grid and stays put whether or not the chunk is live, so a mouth you found
+    // an hour ago is still there when you walk back to it.
+    const poi = World.rollPOI(world, cx, cy);
+    if (poi) {
+      world.grid[poi.y][poi.x] = poi.kind === 'mouth' ? D.TILE.STAIRS_DOWN : D.TILE.ENTRY;
+      world.pois[key] = poi;
+    }
 
     world.gen[key] = 1;
     return true;
@@ -280,6 +305,74 @@
       for (let x = cx - radius; x <= cx + radius; x++) World.ensureChunk(world, x, y);
     }
   };
+
+  // ---- Points of interest ----
+  // One roll per chunk, so a chunk holds at most a mouth or a waystone and the
+  // two can never fight over the same tile. Both are pure in (seed, cx, cy) plus
+  // the chunk's own terrain, which ensureChunk has already written.
+
+  const MOUTH_NAMES = [
+    'Sunken Barrow', 'Gaping Fissure', 'Drowned Stair', 'Hollow Cairn', 'Black Adit',
+    'Weeping Shaft', 'Toppled Spire', 'Ashen Maw', 'Root Cellar', 'Whispering Pit',
+  ];
+
+  World.rollPOI = function (world, cx, cy) {
+    const seed = world.seed;
+    const B = Balance.world;
+    const ring = World.ringOf(cx, cy);
+    if (ring === 0) return null; // the camp's own chunk holds the camp
+    const rng = U.mulberry32(U.hash2((seed ^ 0x901d) | 0, cx, cy));
+    const roll = rng();
+
+    const grid = world.grid;
+    const C = World.CHUNK;
+    const x0 = cx * C;
+    const y0 = cy * C;
+    // A POI wants open ground with room around it, and off the road so the tile
+    // reads as a landmark rather than as part of the route.
+    const spot = (() => {
+      for (let t = 0; t < 40; t++) {
+        const x = x0 + U.randInt(rng, 4, C - 5);
+        const y = y0 + U.randInt(rng, 4, C - 5);
+        if (grid[y][x] !== D.TILE.FLOOR) continue;
+        let open = true;
+        for (let dy = -1; dy <= 1 && open; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (!D.isWalkable(grid[y + dy][x + dx])) {
+              open = false;
+              break;
+            }
+          }
+        }
+        if (open) return { x, y };
+      }
+      return null;
+    })();
+    if (!spot) return null;
+
+    if (roll < B.mouthChance) {
+      // Each mouth is its own dungeon: the seed is a pure function of where it
+      // is, so the same hole always leads to the same place.
+      return {
+        kind: 'mouth',
+        x: spot.x,
+        y: spot.y,
+        ring,
+        dungeonSeed: U.hash2((seed ^ 0x0dee9) | 0, cx, cy),
+        floor: Math.max(1, World.effectiveFloor(ring) || 1),
+        name: MOUTH_NAMES[U.hash2(seed | 0, cx, cy) % MOUTH_NAMES.length],
+      };
+    }
+    if (roll < B.mouthChance + B.waystoneChance) {
+      return { kind: 'waystone', x: spot.x, y: spot.y, ring, name: `Waystone of the ${ordinal(ring)} Reach` };
+    }
+    return null;
+  };
+
+  function ordinal(n) {
+    const names = ['Innermost', 'First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Seventh', 'Eighth', 'Ninth', 'Tenth'];
+    return names[n] || `${n}th`;
+  }
 
   // ---- Population ----
   // Ring drives an EFFECTIVE FLOOR that feeds straight into the dungeon's own

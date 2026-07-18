@@ -11,6 +11,7 @@
   const Game = typeof window !== 'undefined' ? window.Game : require('./core.js');
   const Balance = typeof window !== 'undefined' ? window.Balance : require('../balance.js');
   const World = typeof window !== 'undefined' ? window.World : require('../world.js');
+  const Quests = typeof window !== 'undefined' ? window.Quests : require('../quests.js');
   const G = Game._;
   const { TS } = G;
 
@@ -224,6 +225,8 @@
     const biome = World.biomeAt(w.world.seed, Math.floor(p.x / TS), Math.floor(p.y / TS));
     if (state.dungeon.theme !== biome) state.dungeon.theme = biome;
 
+    G.discoverPOIs(state);
+
     // A world boss you have laid eyes on gets pinned on the map, so finding one
     // is a discovery you can come back to rather than a thing you must fight now.
     if (w.bosses) {
@@ -267,7 +270,9 @@
       world,
       seed: worldSeed,
       active: new Set(),
-      visited: {},
+      visited: {}, // chunks the party has stood in — what the map is drawn from
+      pois: {}, // discovery record: which mouths are found, which waystones woken
+      bosses: {}, // world bosses laid eyes on, and whether they still stand
       cleared: {},
       respawn: {},
       t: 0,
@@ -292,6 +297,11 @@
     state.flow = { field: null, t: 0 };
     state.stash = null;
 
+    // Grizzle's stock and the notice board are camp furniture; they refresh on
+    // arrival out here exactly as they did on every trip through the portal.
+    state.shop = G.rollWorldShop(state);
+    state.board = Quests.rollBoard(Math.max(1, state.floor), state.srand, state.quests);
+
     const spot = at || level.entry;
     World.ensureAround(world, World.TOWN_CX, World.TOWN_CY, B().activeRadius + 1);
     const placed = G.findOpenTile(world, spot.x, spot.y);
@@ -307,6 +317,210 @@
       G.clearStatus(pl);
     });
     state.cam = { x: state.player.x, y: state.player.y };
+    return state;
+  };
+
+  // ---- Places ----
+
+  // Grizzle's three-slot stock. Priced off the deepest floor the run has
+  // reached, so the stall keeps pace with the hero rather than with wherever
+  // they happen to be standing on the map.
+  G.rollWorldShop = function rollWorldShop(state) {
+    const stock = [];
+    for (let i = 0; i < 3; i++) {
+      const item = Items.makeItem(Math.max(1, state.floor), state.srand, { guaranteeMagic: i === 2 });
+      stock.push({ item, price: Items.buyPrice(item) });
+    }
+    return stock;
+  };
+
+  // Discover the POIs the party is standing near. A mouth only has to be seen to
+  // be remembered; a waystone has to be touched to be unlocked, which is what
+  // makes finding one an event rather than a map update.
+  G.discoverPOIs = function discoverPOIs(state) {
+    const w = state.world;
+    const pois = w.world.pois;
+    const seePx = state.dungeon.sightTiles * TS;
+    const touchPx = 2.2 * TS;
+    for (const k of Object.keys(pois)) {
+      const poi = pois[k];
+      const px = (poi.x + 0.5) * TS;
+      const py = (poi.y + 0.5) * TS;
+      let nearest = Infinity;
+      for (const pl of state.players) {
+        if (pl.dead) continue;
+        nearest = Math.min(nearest, U.dist2(pl.x, pl.y, px, py));
+      }
+      if (nearest === Infinity) continue;
+      const rec = w.pois[k] || (w.pois[k] = { ...poi, found: false, unlocked: false });
+      if (!rec.found && nearest <= seePx * seePx) {
+        rec.found = true;
+        if (poi.kind === 'mouth') {
+          G.message(state, `You find the ${poi.name} — a way down (floor ${poi.floor}).`, '#c66bff');
+        } else {
+          G.message(state, `A waystone stands here: the ${poi.name}.`, '#7fb8ff');
+        }
+        G.sfx(state, 'portal');
+      }
+      if (poi.kind === 'waystone' && !rec.unlocked && nearest <= touchPx * touchPx) {
+        rec.unlocked = true;
+        G.message(state, `The ${poi.name} wakes to your touch. You may travel here.`, '#7fb8ff');
+        G.sfx(state, 'levelup');
+        G.burst(state, px, py, '#7fb8ff', 24, 140);
+        G.save(state);
+      }
+    }
+  };
+
+  // The mouth standing on a given tile, if any.
+  G.mouthAt = function mouthAt(state, tx, ty) {
+    const w = state.world;
+    if (!w) return null;
+    const c = World.chunkOf(tx, ty);
+    const poi = w.world.pois[World.chunkKey(c.cx, c.cy)];
+    return poi && poi.kind === 'mouth' && poi.x === tx && poi.y === ty ? poi : null;
+  };
+
+  G.unlockedWaystones = function unlockedWaystones(state) {
+    const w = state.world;
+    if (!w || !w.pois) return [];
+    return Object.keys(w.pois)
+      .map((k) => w.pois[k])
+      .filter((p) => p.kind === 'waystone' && p.unlocked)
+      .sort((a, b) => a.ring - b.ring || a.x - b.x || a.y - b.y);
+  };
+
+  // Step into a hole in the ground. The overworld is stashed whole and dungeon
+  // floors churn beneath it — the same single-slot stash the town trip has always
+  // used, which still suffices because the world is the OUTER level here and the
+  // floors are the inner churn.
+  Game.enterMouth = function enterMouth(state, poi) {
+    const stash = {
+      overworld: true,
+      dungeon: state.dungeon,
+      monsters: state.monsters,
+      props: state.props,
+      groundItems: state.groundItems,
+      explored: state.explored,
+      flow: state.flow,
+      world: state.world,
+      torches: state.dungeon.torches,
+      mouth: { x: poi.x, y: poi.y, name: poi.name },
+      portalPos: { x: (poi.x + 0.5) * TS, y: (poi.y + 0.5) * TS + TS },
+    };
+    state.dungeonSeed = poi.dungeonSeed;
+    state.floor = poi.floor;
+    state.mapOpen = false;
+    state.stash = stash; // makeFloorState keeps an overworld stash across floors
+    G.makeFloorState(state);
+    state.inWorld = false;
+    for (const pl of state.players) Stats.bump(pl, 'floors');
+    G.questDepth(state);
+    G.message(state, `You climb down into the ${poi.name}. Floor ${state.floor}.`, '#c9b37e');
+    G.sfx(state, 'stairs');
+    if (typeof Save !== 'undefined') Save.updateRecords(state);
+    G.save(state);
+    return state;
+  };
+
+  // Come back up. Restores the stashed continent and stands the party at the
+  // mouth they went down.
+  G.leaveMouth = function leaveMouth(state) {
+    const st = state.stash;
+    if (!st || !st.overworld) return false;
+    state.dungeon = st.dungeon;
+    state.monsters = st.monsters;
+    state.props = st.props;
+    state.groundItems = st.groundItems;
+    state.explored = st.explored;
+    state.flow = st.flow;
+    state.world = st.world;
+    state.projectiles = [];
+    state.portals = [];
+    state.stash = null;
+    state.inWorld = true;
+    state.inTown = false;
+    state.trading = false;
+    state.dungeonSeed = null;
+    // A trip underground and back is a trip away from camp: restock the stall
+    // and repost the board, the same as returning through the portal used to.
+    state.shop = G.rollWorldShop(state);
+    state.board = Quests.rollBoard(Math.max(1, state.floor), state.srand, state.quests);
+    const spot = st.portalPos;
+    const roster = state.players && state.players.length ? state.players : [state.player];
+    roster.forEach((pl, i) => {
+      const spread = roster.length > 1 ? 16 : 0;
+      const a = (i / Math.max(1, roster.length)) * Math.PI * 2;
+      pl.x = spot.x + Math.cos(a) * spread;
+      pl.y = spot.y + Math.sin(a) * spread;
+    });
+    state.cam = { x: state.player.x, y: state.player.y };
+    state.fade = { t: 0, dur: 1.4, label: st.mouth ? `The ${st.mouth.name}` : 'The open world' };
+    G.message(state, 'You climb back into the daylight.', '#c9b37e');
+    G.save(state);
+    return true;
+  };
+
+  // Warp between unlocked waystones. This is a move, not a re-entry: the world,
+  // the explored map, and every discovery survive it — only the live chunks are
+  // dropped, because the party is somewhere else entirely now.
+  Game.useWaystone = function useWaystone(state, target) {
+    if (!state.inWorld || !target || !target.unlocked) return false;
+    const spot = G.findOpenTile(state.world.world, target.x, target.y + 1);
+    for (const k of [...state.world.active]) G.deactivateChunk(state, k);
+    const cx = (spot.x + 0.5) * TS;
+    const cy = (spot.y + 0.5) * TS;
+    const roster = state.players && state.players.length ? state.players : [state.player];
+    roster.forEach((pl, i) => {
+      const spread = roster.length > 1 ? 16 : 0;
+      const a = (i / Math.max(1, roster.length)) * Math.PI * 2;
+      pl.x = cx + Math.cos(a) * spread;
+      pl.y = cy + Math.sin(a) * spread;
+    });
+    state.projectiles = [];
+    state.flow = { field: null, t: 0 };
+    state.mapOpen = false;
+    state.cam = { x: state.player.x, y: state.player.y };
+    state.fade = { t: 0, dur: 1.4, label: target.name };
+    G.message(state, `The waystones carry you to the ${target.name}.`, '#7fb8ff');
+    G.sfx(state, 'travel');
+    G.burst(state, cx, cy, '#7fb8ff', 26, 150);
+    G.save(state);
+    return true;
+  };
+
+  // A fresh solo run. The hero begins on the road just outside Ashfall Camp,
+  // with the whole continent in front of them and the dungeons somewhere in it —
+  // holes in the ground you find by walking, rather than a staircase you start
+  // on. `Game.newRun` stays the plain run constructor (and the dungeon-floor
+  // fixture the sim tests are written against); this is the game's front door.
+  Game.newSoloRun = function newSoloRun(seed, opts) {
+    const state = Game.newRun(seed, opts);
+    const world = World.create(state.worldSeed);
+    World.ensureChunk(world, World.TOWN_CX, World.TOWN_CY);
+    const camp = World.town(world);
+    state.world = {
+      world,
+      seed: state.worldSeed,
+      active: new Set(),
+      visited: {},
+      pois: {},
+      bosses: {},
+      cleared: {},
+      respawn: {},
+      t: 0,
+    };
+    // Just south of the camp entry: close enough to walk in and sell, far enough
+    // that the first thing you see is open country.
+    Game.enterWorld(state, { x: camp.entry.x, y: camp.entry.y + 4 });
+    state.messages = [];
+    state.fade = {
+      t: 0,
+      dur: 2.4,
+      label: 'The Ashen Reach',
+      sub: 'Ashfall Camp at its heart, and the dark beneath it',
+    };
+    G.message(state, 'The road runs out from Ashfall Camp in every direction. (WASD to move, M for your map)');
     return state;
   };
 

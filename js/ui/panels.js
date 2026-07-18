@@ -654,6 +654,17 @@
     return cv;
   }
 
+  // The discovery record for a waystone standing on a given world tile.
+  I.waystoneAt = function waystoneAt(state, tx, ty) {
+    const w = state.world;
+    if (!w || !w.pois) return null;
+    for (const k of Object.keys(w.pois)) {
+      const p = w.pois[k];
+      if (p.kind === 'waystone' && p.x === tx && p.y === ty) return p;
+    }
+    return null;
+  };
+
   I.drawWorldMap = function drawWorldMap(ctx, state, view) {
     const L = I.worldMapLayout(view);
     I.panelBg(ctx, L.panel, 0.97);
