@@ -33,6 +33,31 @@ function equipWeapon(state, kind) {
   return w;
 }
 
+// Stand the player somewhere in the entry room with open floor at every offset the
+// test is about to place a monster on. Beats hand-picking offsets against one seed's
+// room shape: a layout change then re-solves here instead of failing the suite.
+function standClearOf(state, offsets) {
+  const room = state.dungeon.rooms[0];
+  const grid = state.dungeon.grid;
+  const open = (px, py) => {
+    const tx = Math.floor(px / TS);
+    const ty = Math.floor(py / TS);
+    return grid[ty] !== undefined && Dungeon.isWalkable(grid[ty][tx]);
+  };
+  for (let ty = room.y + 1; ty < room.y + room.h - 1; ty++) {
+    for (let tx = room.x + 1; tx < room.x + room.w - 1; tx++) {
+      const px = tx * TS + TS / 2;
+      const py = ty * TS + TS / 2;
+      if (!open(px, py)) continue;
+      if (!offsets.every(([dx, dy]) => open(px + dx, py + dy))) continue;
+      state.player.x = px;
+      state.player.y = py;
+      return;
+    }
+  }
+  assert.fail(`entry room has no spot clear of ${JSON.stringify(offsets)}`);
+}
+
 function placeMonster(state, dx, dy) {
   const m = {
     ...Entities.makeMonster('zombie', 1, false),
@@ -105,6 +130,7 @@ test('a bow fires an arrow that kills a monster down the line', () => {
   let state = Game.newRun(41);
   state.monsters.length = 0;
   equipWeapon(state, 'bow');
+  standClearOf(state, [[150, 0]]);
   const m = placeMonster(state, 150, 0);
   state.player.facing = 0;
   const input = freshInput();
@@ -122,6 +148,7 @@ test('a wand fireball explodes and hurts the whole pack', () => {
   let state = Game.newRun(42);
   state.monsters.length = 0;
   equipWeapon(state, 'wand');
+  standClearOf(state, [[120, 0], [110, 18], [110, -18]]);
   placeMonster(state, 120, 0);
   placeMonster(state, 110, 18);
   placeMonster(state, 110, -18);

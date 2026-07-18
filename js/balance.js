@@ -112,8 +112,11 @@
   Balance.rarity = { common: 66, magic: 24, rare: 8, unique: 2 };
 
   // ---- Dungeon population ----
-  // Monsters per room: base + rand(0..rand) + min(depthCap, floor(depthRate·(f−1))).
-  Balance.spawns = { base: 2, rand: 2, depthRate: 0.7, depthCap: 4, championChance: 0.12 };
+  // Monsters per room: base + rand(0..rand) + min(depthCap, floor(depthRate·(f−1)))
+  // + min(roomCap, floor(roomRate·roomDepth)), where roomDepth is how many rooms deep
+  // the chamber sits along the route in. The last term makes one floor escalate as you
+  // push toward the stairs instead of being uniformly dangerous everywhere.
+  Balance.spawns = { base: 2, rand: 2, depthRate: 0.7, depthCap: 4, roomRate: 0.25, roomCap: 3, championChance: 0.12 };
 
   // ---- Breakable decorations (furniture, pots, barrels, chests) ----
   // Smashable clutter that dresses rooms and coughs up minor loot. Non-blocking:
