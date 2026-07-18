@@ -67,7 +67,14 @@ test('spawn counts follow Balance.spawns', () => {
     const d = Dungeon.generateDungeon(3, floor);
     const bonus = Math.min(S.depthCap, Math.floor((floor - 1) * S.depthRate));
     const rooms = d.rooms.length - 1 - (d.boss ? 1 : 0); // entry room and boss arena spawn nothing
+    // The per-room term varies by how deep each chamber sits, so the ceiling is summed
+    // room by room rather than multiplied through.
+    const roomBonus = (r) => Math.min(S.roomCap, Math.floor(r.depth * S.roomRate));
+    const ceiling = d.rooms
+      .slice(1)
+      .filter((r) => !(d.boss && r.x === d.boss.room.x && r.y === d.boss.room.y))
+      .reduce((sum, r) => sum + S.base + S.rand + bonus + roomBonus(r), 0);
     assert.ok(d.spawns.length >= rooms * (S.base + bonus) * 0.7, `enough spawns on floor ${floor} (${d.spawns.length})`);
-    assert.ok(d.spawns.length <= rooms * (S.base + S.rand + bonus), `not too many on floor ${floor}`);
+    assert.ok(d.spawns.length <= ceiling, `not too many on floor ${floor} (${d.spawns.length} > ${ceiling})`);
   }
 });

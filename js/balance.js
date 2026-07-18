@@ -112,8 +112,11 @@
   Balance.rarity = { common: 66, magic: 24, rare: 8, unique: 2 };
 
   // ---- Dungeon population ----
-  // Monsters per room: base + rand(0..rand) + min(depthCap, floor(depthRate·(f−1))).
-  Balance.spawns = { base: 2, rand: 2, depthRate: 0.7, depthCap: 4, championChance: 0.12 };
+  // Monsters per room: base + rand(0..rand) + min(depthCap, floor(depthRate·(f−1)))
+  // + min(roomCap, floor(roomRate·roomDepth)), where roomDepth is how many rooms deep
+  // the chamber sits along the route in. The last term makes one floor escalate as you
+  // push toward the stairs instead of being uniformly dangerous everywhere.
+  Balance.spawns = { base: 2, rand: 2, depthRate: 0.7, depthCap: 4, roomRate: 0.25, roomCap: 3, championChance: 0.12 };
 
   // ---- Breakable decorations (furniture, pots, barrels, chests) ----
   // Smashable clutter that dresses rooms and coughs up minor loot. Non-blocking:
@@ -176,6 +179,25 @@
 
   // ---- Blacksmith ----
   Balance.upgrade = { dmgPerPlus: 0.08, defPerPlus: 0.08, maxPlus: 10 };
+
+  // ---- Weapon proficiency ----
+  // Kill things with a weapon class and you get better with it. Proficiency XP is
+  // credited to the KILLING BLOW's weapon kind only (melee/bow/wand) and is worth
+  // `xpPerKill` × the monster's own XP — so it inherits floor/champion/boss scaling
+  // for free, and plinking at a tanky monster earns nothing until it dies.
+  //
+  // Bonus is a damage multiplier: dmg ×(1 + min(maxBonus, k·log2(1 + xp/scale))).
+  // Logarithmic on purpose — the first hundred kills feel good, then it flattens hard
+  // on its own, and `maxBonus` is the hard guarantee that mastery stays a garnish
+  // rather than a second power curve. For scale: the cap is worth about 7 hero levels
+  // of baseDamage, and costs ~90k proficiency XP (thousands of kills) to reach.
+  Balance.proficiency = {
+    kinds: ['melee', 'bow', 'wand'],
+    xpPerKill: 1, // proficiency XP = xpPerKill × monster xp
+    k: 0.02, // curve steepness (bonus per doubling past `scale`)
+    scale: 500, // XP where the curve starts to bite
+    maxBonus: 0.15, // hard ceiling: +15% weapon damage, never more
+  };
 
   // ---- Quest board ----
   // Rewards are priced in "work units", where one unit ≈ killing a floor-1

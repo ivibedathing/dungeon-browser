@@ -258,6 +258,10 @@ class Room {
         // hero's quest state to everyone would grow each snapshot for something
         // no client needs in order to render anyone.
         mainQuest: me.mainQuest || null,
+        // The run tally sheet is per-character too, and the co-op client never runs
+        // the full sim that bumps it — so it must ride the private block or the
+        // stats panel reads zero all session and the run banks nothing on death.
+        stats: me.stats || null,
       },
       // Party members are never AOI-culled: the HUD and (Phase 4) the minimap
       // need every ally every tick, and there are at most three of them. The swing
@@ -307,7 +311,10 @@ class Room {
           // Telegraph charge (0..1) for the wind-up cue; the client derives which
           // cue from `type`, so no behavior tag needs to ride the wire.
           tel: m.tel ? round2(m.tel) : 0,
-
+          // The bomber's fuse timer drives the 'primed' spark in render/monster.js;
+          // without it a co-op client only ever shows the idle fuse, losing the
+          // about-to-explode warning that solo players get.
+          fuseT: m.fuseT > 0 ? round3(m.fuseT) : 0,
         })),
       projectiles: s.projectiles
         .filter((pr) => this.inAOI(me, pr.x, pr.y))

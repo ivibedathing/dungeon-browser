@@ -32,7 +32,7 @@
   const HELD = { KeyW: 'w', KeyA: 'a', KeyS: 's', KeyD: 'd', ArrowUp: 'w', ArrowLeft: 'a', ArrowDown: 's', ArrowRight: 'd' };
   const EDGE = {
     Space: 'dodge', KeyE: 'interact', KeyI: 'inv', Tab: 'inv', KeyB: 'inv', KeyR: 'restart',
-    KeyQ: 'drink', KeyT: 'portal', KeyN: 'mute', KeyK: 'tree', KeyC: 'stats',
+    KeyQ: 'drink', KeyT: 'portal', KeyN: 'mute', KeyM: 'music', KeyK: 'tree', KeyC: 'stats',
     KeyF: 'skill0', KeyG: 'skill1', KeyH: 'skill2',
     Digit1: 'belt0', Digit2: 'belt1', Digit3: 'belt2', Digit4: 'belt3', Escape: 'esc',
   };
@@ -292,7 +292,11 @@
   }
 
   Sfx.setMuted(Save.getMuted());
-  const unlockAudio = () => Sfx.unlock();
+  Music.setMuted(Save.getMusicMuted());
+  const unlockAudio = () => {
+    Sfx.unlock();
+    Music.unlock(); // starts whatever track the menu already asked for
+  };
   window.addEventListener('keydown', unlockAudio, { once: true });
   window.addEventListener('mousedown', unlockAudio, { once: true });
 
@@ -382,10 +386,25 @@
     clearEdges();
   }
 
+  // Music toggle lives out here rather than in Game.update so it also works on the
+  // menu and the death screen, where the sim isn't ticking. (Same reason the score
+  // is chosen from `screen`: the front-end has music too.)
+  function updateMusic() {
+    if (input.pressed.has('music')) {
+      const m = Music.toggle();
+      Save.setMusicMuted(m);
+      const s = screen === 'playing' ? (mode === 'online' ? netState : state) : null;
+      if (s) Game._.message(s, m ? 'Music off. (M to restore)' : 'Music on.', '#9aa');
+    }
+    const world = screen === 'playing' ? (mode === 'online' ? netState : state) : null;
+    Music.play(Music.trackFor(screen, world));
+  }
+
   function frame(now) {
     frames++;
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
+    updateMusic();
 
     // Front-end screens draw over a frozen world backdrop.
     if (screen !== 'playing') {

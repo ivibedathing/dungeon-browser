@@ -168,6 +168,11 @@
   // (the monster) to enable thorns retaliation; ranged/blast sources omit it.
   function hurtPlayer(state, p, rawDmgOrFn, opts) {
     opts = opts || {};
+    // A downed co-op ally is out of the fight until revived: the explode, dash, and
+    // hostile-bolt paths all skip pl.down at their call site, so melee (which reaches
+    // here via nearestPlayer) must too — otherwise it lands phantom hits that fire
+    // hurt feedback and inflate the 'taken' tally without touching real HP.
+    if (p.down) return 0;
     if (p.dodgeT > 0 && !opts.ignoreDodge) {
       G.floatText(state, p.x, p.y - 24, 'dodged!', '#c9c2b2', 13);
       return 0;
@@ -280,6 +285,8 @@
     }
   };
 
+  G.hitMonster = hitMonster; // exported for the skill paths and tests
+
   function rollDamage(state, stats) {
     let dmg = Math.max(1, Math.round(stats.damage * (0.85 + state.srand() * 0.3)));
     // Critical strike: a 1.5× hit. The srand() draw is guarded on critChance so gear
@@ -386,6 +393,17 @@
           // A boss caster's bolt can carry a burn (see js/game/behaviors.js); apply
           // it only on a landed hit, never through a dodge.
           if (dealt > 0 && pr.burn > 0) G.applyStatus(pl, 'burn', pr.burnDur || 3, { dps: pr.burn, src: null });
+          break;
+        }
+      }
+      // Shatter a destructible prop in the flight path, exactly as a hero shot does,
+      // so a barrel/crate still blocks and breaks an enemy bolt.
+      if (!dead) {
+        for (const prop of state.props) {
+          const reach = prop.size + 4;
+          if (U.dist2(pr.x, pr.y, prop.x, prop.y) >= reach * reach) continue;
+          dead = true;
+          G.hitProp(state, prop, pr.dmg);
           break;
         }
       }
@@ -506,10 +524,30 @@
     if (stats.manaPerKill > 0) {
       killer.mana = Math.min(Entities.effectiveStats(killer).maxMana, (killer.mana || 0) + stats.manaPerKill);
     }
+    // Weapon proficiency, unlike XP, is NOT shared: it goes to the hero who landed the
+    // killing blow, for the kind of weapon that landed it (`stats` is the attacker's
+    // own stat blob, so skill kills credit whatever they had equipped).
+    awardProficiency(state, m, stats, killer);
     // XP goes to every living player within share range of the kill (Task 3). Solo:
     // the one player is always in range ⇒ identical to the old single-player grant.
     awardKillXP(state, m, killer);
     dropLoot(state, m, killer);
+  }
+
+  // Credits the killing weapon's kind. Silent by design — proficiency is a slow
+  // background curve — except when the bonus crosses a whole percent, which is the
+  // smallest change a player can actually read off the character sheet.
+  function awardProficiency(state, m, stats, killer) {
+    if (!killer || !stats || !stats.kind) return;
+    const P = Balance.proficiency;
+    if (!P) return;
+    const before = Entities.profBonus(killer, stats.kind);
+    Entities.gainProficiency(killer, stats.kind, (m.xp || 0) * P.xpPerKill);
+    const after = Entities.profBonus(killer, stats.kind);
+    if (Math.floor(after * 100) > Math.floor(before * 100)) {
+      G.floatText(state, killer.x, killer.y - 34, `${stats.kind} +${Math.floor(after * 100)}%`, '#c9b37e', 13);
+      if (killer === state.player) G.save(state);
+    }
   }
 
   // Full XP (each hero's own xpMult) to every living player within Balance.coop.shareRange
@@ -590,7 +628,7 @@
         if (!G.lineOfSight(state.dungeon.grid, p.x, p.y, m.x, m.y)) continue;
         const dmg = Math.max(1, Math.round(stats.damage * (0.8 + 0.15 * rank) * (0.85 + state.srand() * 0.3)));
         hitAny = true;
-        hitMonster(state, m, dmg, stats, Math.atan2(m.y - p.y, m.x - p.x), stats.kb * 1.2);
+        hitMonster(state, m, dmg, stats, Math.atan2(m.y - p.y, m.x - p.x), stats.kb * 1.2, p);
       }
       if (G.damagePropsInArc(state, p.x, p.y, p.facing, Math.PI * 2, reachBase, () => Math.max(1, Math.round(stats.damage * (0.8 + 0.15 * rank) * (0.85 + state.srand() * 0.3))))) hitAny = true;
       if (hitAny) {

@@ -4,7 +4,8 @@
   const Sfx = {};
 
   let ctx = null;
-  let master = null;
+  let master = null; // the effects chain: every blip → compressor → speakers
+  let musicBus = null; // music.js's own bus to the speakers, muted independently
   let muted = false;
   let noiseBuf = null;
   const lastPlay = {};
@@ -19,7 +20,26 @@
     const comp = ctx.createDynamicsCompressor();
     master.connect(comp);
     comp.connect(ctx.destination);
+    // The effects chain above is untouched, so blips sound exactly as they did
+    // before music existed. The score gets its own path to the speakers rather than
+    // sharing that compressor — routed through it, a loud passage of music would
+    // pump the gain reduction and duck every effect. Music sits lower in the mix
+    // regardless: it is a bed, not a foreground event.
+    musicBus = ctx.createGain();
+    musicBus.gain.value = 0.28;
+    musicBus.connect(ctx.destination);
   }
+
+  // Shared plumbing for music.js: one AudioContext for the whole game, so a single
+  // unlock gesture covers both effects and the score.
+  Sfx.context = function () {
+    ensure();
+    return ctx;
+  };
+  Sfx.musicBus = function () {
+    ensure();
+    return musicBus;
+  };
 
   // Browsers require a user gesture before audio starts; main.js calls this on the first one.
   Sfx.unlock = function () {

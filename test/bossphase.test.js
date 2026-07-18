@@ -135,8 +135,25 @@ test("a phase's speedMult is actually read, not just written onto the boss", () 
     let state = Game.newRun(98);
     state.monsters.length = 0;
     state.player.baseMaxHP = 100000; state.player.hp = 100000;
+    // This test measures phase speed, not the generated layout, so put the hero at a
+    // fixed interior tile with room to the right and carve a straight open lane to the
+    // boss. (The organic layout may spawn the hero near an edge or leave no 420px shot,
+    // which would push the boss off-grid or make it path around walls.)
+    const TS = Dungeon.TILE_SIZE;
+    const laneY = Math.floor(state.dungeon.grid.length / 2);
+    state.player.x = 6.5 * TS;
+    state.player.y = (laneY + 0.5) * TS;
     const m = bossOn(state, 1000, [{ at: 0.9, behavior: 'melee', speedMult: 2.5 }]);
     m.x = state.player.x + 420; // far enough that the whole window is spent closing
+    m.y = state.player.y;
+    const x0 = Math.floor(state.player.x / TS);
+    const x1 = Math.floor(m.x / TS);
+    for (let tx = x0 - 1; tx <= x1 + 1; tx++) {
+      for (let ry = laneY - 1; ry <= laneY + 1; ry++) {
+        if (state.dungeon.grid[ry] && state.dungeon.grid[ry][tx] !== undefined) state.dungeon.grid[ry][tx] = Dungeon.TILE.FLOOR;
+      }
+    }
+    state.flow.field = null; // force a recompute over the freshly carved lane
     const stats = Entities.effectiveStats(state.player);
     if (withPhase) G.hitMonster(state, m, 200, stats, 0, 0, state.player); // trip the gate
     const d0 = Math.hypot(m.x - state.player.x, m.y - state.player.y);
