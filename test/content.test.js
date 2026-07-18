@@ -26,7 +26,7 @@ test('every weapon kind upgrades at the anvil and its damage/price climb', () =>
     const w = Items.makeItem(6, rng, { slot: 'weapon', kind, rarity: 'rare' });
     const dmg0 = Items.weaponDamage(w);
     const cost0 = Items.upgradeCost(w);
-    assert.equal(Items.upgradeWeapon(w), true, `${kind} accepts an upgrade`);
+    assert.equal(Items.upgradeItem(w), true, `${kind} accepts an upgrade`);
     assert.equal(w.plus, 1);
     assert.ok(Items.weaponDamage(w) > dmg0, `${kind} damage rises with +1`);
     assert.ok(Items.upgradeCost(w) > cost0, `${kind} next upgrade costs more`);
@@ -45,8 +45,8 @@ test('drops surface the full weapon-kind spread at depth', () => {
 
 test('the display name carries the +N upgrade prefix on any weapon', () => {
   const w = Items.makeItem(3, U.mulberry32(3), { slot: 'weapon', kind: 'crossbow' });
-  Items.upgradeWeapon(w);
-  Items.upgradeWeapon(w);
+  Items.upgradeItem(w);
+  Items.upgradeItem(w);
   assert.ok(Items.displayName(w).startsWith('+2 '), `display name was "${Items.displayName(w)}"`);
 });
 
