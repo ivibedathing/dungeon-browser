@@ -105,6 +105,26 @@
         ctx.lineTo(4, 2.5);
         ctx.fill();
         ctx.restore();
+      } else if (pr.kind === 'bolt') {
+        // Hostile caster bolt: a violet mote with a short tail.
+        ctx.save();
+        ctx.translate(pr.x, pr.y);
+        ctx.rotate(pr.angle);
+        ctx.fillStyle = 'rgba(180,107,255,0.4)';
+        ctx.beginPath();
+        ctx.moveTo(-10, 0);
+        ctx.lineTo(0, -2.5);
+        ctx.lineTo(0, 2.5);
+        ctx.fill();
+        const bg = ctx.createRadialGradient(0, 0, 0.5, 0, 0, 6);
+        bg.addColorStop(0, '#f0e0ff');
+        bg.addColorStop(0.5, '#b46bff');
+        bg.addColorStop(1, 'rgba(120,60,200,0)');
+        ctx.fillStyle = bg;
+        ctx.beginPath();
+        ctx.arc(0, 0, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
       } else if (pr.kind === 'thrown') {
         // A tumbling steel weapon: spins independent of flight angle.
         ctx.save();

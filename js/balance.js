@@ -38,6 +38,16 @@
     skeleton_knight: { hp: 64, dmg: 13, speed: 54, xp: 26, minFloor: 4, weight: 12, size: 13, color: '#b8c2cf', aggro: 260, attackRange: 32, attackCd: 1.3 },
     // Ogre: a bigger, deadlier brute for the deeper floors.
     ogre: { hp: 118, dmg: 23, speed: 44, xp: 42, minFloor: 5, weight: 8, size: 20, color: '#8a7a4d', aggro: 250, attackRange: 38, attackCd: 1.6 },
+    // ---- Behavior archetypes (Phase 4): non-melee AI + hostile projectiles ----
+    // `behavior` selects the AI branch; `attackCd` is that behavior's action cooldown.
+    // Ranged caster: kites and lobs a magic bolt after a short, dodgeable cast.
+    cultist: { hp: 26, dmg: 10, speed: 70, xp: 22, minFloor: 4, weight: 14, size: 11, color: '#b57edc', aggro: 380, attackRange: 30, attackCd: 2.0, behavior: 'ranged' },
+    // Exploder: rushes in, lights a fuse on contact, and detonates in an AoE.
+    bomber: { hp: 30, dmg: 24, speed: 92, xp: 18, minFloor: 5, weight: 12, size: 12, color: '#d98b3f', aggro: 360, attackRange: 30, attackCd: 1.0, behavior: 'exploder' },
+    // Charger: winds up, then dashes in a straight line for heavy contact damage.
+    gargoyle: { hp: 46, dmg: 18, speed: 60, xp: 26, minFloor: 6, weight: 12, size: 13, color: '#8a8f98', aggro: 340, attackRange: 30, attackCd: 3.0, behavior: 'charger' },
+    // Summoner: hangs back and raises weak skeletal minions up to a cap.
+    necromancer: { hp: 40, dmg: 8, speed: 66, xp: 30, minFloor: 6, weight: 10, size: 12, color: '#6f8f6f', aggro: 360, attackRange: 30, attackCd: 5.0, behavior: 'summoner' },
     // Swarmling: never in the random pool (weight 0) — only ambush swarms spawn it.
     // Frail and cheap, but faster than anything else and hits quick, so a pack
     // that reaches you drains HP in a hurry. Huge aggro: it commits on sight.
@@ -47,6 +57,17 @@
   // Per-floor scaling: hp ×(1 + hpLin·(f−1) + hpQuad·(f−1)²), dmg ×(1 + dmgLin·(f−1)),
   // xp ×(1 + xpLin·(f−1)).
   Balance.scaling = { hpLin: 0.38, hpQuad: 0.035, dmgLin: 0.28, xpLin: 0.22 };
+
+  // ---- Behavior tuning (Phase 4) ----
+  // Telegraph windows are deliberately generous so every special is dodgeable. All
+  // ranges/speeds are px or px/s; times are seconds. `tel` (0..1 telegraph charge) is
+  // derived from these and rendered as a wind-up cue in solo and co-op alike.
+  Balance.behaviors = {
+    ranged: { fireRange: 340, castTime: 0.45, boltSpeed: 300, kiteRange: 150 },
+    exploder: { fuseTime: 0.7, blastRadius: 74, blastKb: 220 },
+    charger: { windupTime: 0.5, dashTime: 0.26, dashSpeed: 540, triggerRange: 240, minRange: 60 },
+    summoner: { castTime: 0.6, cap: 4, minionsPerCast: 2, minionType: 'skeleton', kiteRange: 170 },
+  };
 
   Balance.champion = { hp: 2.6, dmg: 1.5, xp: 3, size: 1.35, speed: 1.05 };
 

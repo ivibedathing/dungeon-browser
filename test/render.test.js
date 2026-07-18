@@ -87,6 +87,29 @@ test('every weapon family draws as an icon and a held sprite without crashing', 
   }
 });
 
+test('behavior monsters, telegraphs, and hostile bolts draw without crashing', () => {
+  const ctx = makeCtx();
+  const view = { w: 1000, h: 700 };
+  let state = Game.newRun(31);
+  state.monsters.length = 0;
+  const p = state.player;
+  // One of each behavior archetype, mid-telegraph, around the hero.
+  const specials = ['cultist', 'bomber', 'gargoyle', 'necromancer'];
+  specials.forEach((type, i) => {
+    state.monsters.push({
+      ...Entities.makeMonster(type, 6, i === 0),
+      x: p.x + 40 + i * 22, y: p.y + (i % 2 ? 26 : -26),
+      attackT: 0, hitT: 0.1, lungeT: 0, wanderT: 1, wandA: 0, aggroed: true, kbx: 0, kby: 0,
+      tel: 0.5, fuseT: type === 'bomber' ? 0.4 : 0,
+    });
+  });
+  // A hostile bolt in flight exercises the 'bolt' projectile draw.
+  state.projectiles.push({ id: 5555, kind: 'bolt', hostile: true, x: p.x + 30, y: p.y, angle: 3.1, vx: -100, vy: 0, dmg: 8, ttl: 2 });
+  for (let i = 0; i < 10; i++) {
+    Render.draw(ctx, state, view);
+  }
+});
+
 test('every armor motif, ring gem, and rarity pip draws without crashing', () => {
   const ctx = makeCtx();
   const armorMotifs = ['robe', 'mail', 'scale', 'plate', undefined];

@@ -40,6 +40,19 @@
       ctx.stroke();
     }
 
+    // Telegraph: a wind-up cue rendered whenever a special is charging (m.tel 0..1).
+    // Colour reads by archetype so casts, fuses, and charges are distinguishable.
+    if (m.tel > 0) {
+      const TEL_COLOR = { cultist: '180,107,255', necromancer: '111,208,111', bomber: '255,138,61', gargoyle: '220,225,235' };
+      const rgb = TEL_COLOR[m.type] || '255,220,120';
+      const rr = s + 4 + m.tel * 6;
+      ctx.strokeStyle = `rgba(${rgb},${0.35 + m.tel * 0.45})`;
+      ctx.lineWidth = 2 + m.tel * 1.5;
+      ctx.beginPath();
+      ctx.arc(x, y, rr, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * m.tel);
+      ctx.stroke();
+    }
+
     ctx.save();
     if (m.type === 'wraith') ctx.globalAlpha = 0.72;
 
@@ -140,8 +153,58 @@
       ctx.beginPath();
       ctx.arc(x, by - s * 0.5, s * 0.38, 0, Math.PI * 2); // head
       ctx.fill();
+    } else if (m.type === 'bomber') {
+      // A bloated round body with a lit fuse that flares as it primes.
+      ctx.fillStyle = R.shade(m.color, 0.85);
+      ctx.beginPath();
+      ctx.arc(x, by, s * 0.95, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = R.shade(m.color, 1.2);
+      ctx.beginPath();
+      ctx.arc(x - s * 0.25, by - s * 0.25, s * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#6b5330'; // fuse
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(x, by - s * 0.9);
+      ctx.lineTo(x + s * 0.2, by - s * 1.3);
+      ctx.stroke();
+      const spark = 1.4 + (m.fuseT ? Math.sin(t * 40) * 1 : Math.sin(t * 12) * 0.5);
+      ctx.fillStyle = m.fuseT ? '#ffd84d' : '#ff9a3d';
+      ctx.beginPath();
+      ctx.arc(x + s * 0.2, by - s * 1.3, spark + 1, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (m.type === 'gargoyle') {
+      // Stone humanoid with a pair of spread wings.
+      const flap = Math.sin(t * 6 + m.x * 0.1) * 0.25;
+      ctx.fillStyle = R.shade(m.color, 0.7);
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(x + side * s * 0.3, by - s * 0.2);
+        ctx.quadraticCurveTo(x + side * s * 1.3, by - s * (0.9 + flap), x + side * s * 1.2, by + s * 0.3);
+        ctx.quadraticCurveTo(x + side * s * 0.7, by - s * 0.1, x + side * s * 0.3, by + s * 0.1);
+        ctx.fill();
+      }
+      ctx.fillStyle = R.shade(m.color, 0.85);
+      ctx.beginPath();
+      ctx.ellipse(x, by + s * 0.1, s * 0.6, s * 0.7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = m.color;
+      ctx.beginPath();
+      ctx.arc(x, by - s * 0.5, s * 0.42, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = R.shade(m.color, 1.15); // horns
+      ctx.beginPath();
+      ctx.moveTo(x - s * 0.3, by - s * 0.7);
+      ctx.lineTo(x - s * 0.45, by - s * 1.05);
+      ctx.lineTo(x - s * 0.15, by - s * 0.75);
+      ctx.moveTo(x + s * 0.3, by - s * 0.7);
+      ctx.lineTo(x + s * 0.45, by - s * 1.05);
+      ctx.lineTo(x + s * 0.15, by - s * 0.75);
+      ctx.fill();
     } else {
-      // Grounded humanoids: zombie / skeleton / brute / ghoul / skeleton_knight / ogre.
+      // Grounded humanoids: zombie / skeleton / brute / ghoul / skeleton_knight / ogre
+      // and the robed casters (cultist / necromancer).
       ctx.fillStyle = R.shade(m.color, 0.8);
       ctx.beginPath();
       ctx.ellipse(x, by + s * 0.15, s * 0.8, s * 0.66, 0, 0, Math.PI * 2);
@@ -225,6 +288,19 @@
         ctx.moveTo(x + s * 0.22, by - s * 0.22);
         ctx.lineTo(x + s * 0.3, by - s * 0.55);
         ctx.lineTo(x + s * 0.1, by - s * 0.28);
+        ctx.fill();
+      }
+      if (m.type === 'cultist' || m.type === 'necromancer') {
+        // A pointed hood pulled low over the head, with a shadowed face.
+        ctx.fillStyle = R.shade(m.color, 0.7);
+        ctx.beginPath();
+        ctx.moveTo(x - s * 0.55, by - s * 0.3);
+        ctx.quadraticCurveTo(x, by - s * 1.15, x + s * 0.55, by - s * 0.3);
+        ctx.quadraticCurveTo(x, by - s * 0.55, x - s * 0.55, by - s * 0.3);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(10,8,14,0.75)';
+        ctx.beginPath();
+        ctx.arc(x, by - s * 0.34, s * 0.3, 0, Math.PI * 2);
         ctx.fill();
       }
     }

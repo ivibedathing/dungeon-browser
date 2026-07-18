@@ -134,6 +134,7 @@
       aggro: base.aggro,
       attackRange: base.attackRange,
       attackCd: base.attackCd,
+      behavior: base.behavior || 'melee',
     };
     if (champion) {
       // Deterministic name (no rng needed) so generation stays reproducible.
