@@ -14,6 +14,7 @@
       state.invOpen = false;
       state.treeOpen = false;
       state.boardOpen = false;
+      state.statsOpen = false;
     }
     if (state.dead) return;
 

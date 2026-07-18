@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 globalThis.U = require('../js/util.js');
 globalThis.Skills = require('../js/skills.js');
 globalThis.Items = require('../js/items.js');
+globalThis.Stats = require('../js/stats.js');
 globalThis.Entities = require('../js/entities.js');
 globalThis.Quests = require('../js/quests.js');
 globalThis.Dungeon = require('../js/dungeon.js');
@@ -139,4 +140,47 @@ test('the inventory draws the potion box with counts, and box tooltips offer a d
   assert.ok(texts.includes('2/5'), 'healing count drawn');
   assert.ok(texts.includes('1/5'), 'mana count drawn');
   assert.ok(texts.includes('Click to drink'), 'drink hint in tooltip');
+});
+
+// ---- Statistics panel ----
+
+function statsTexts(mutate) {
+  const state = Game.newRun(42);
+  state.statsOpen = true;
+  if (mutate) mutate(state);
+  const texts = [];
+  UI.draw(makeRecordingCtx(texts), state, VIEW);
+  return texts;
+}
+
+test('the stats panel draws a row for every declared counter', () => {
+  const texts = statsTexts();
+  assert.ok(texts.includes('Statistics'), 'panel title drawn');
+  assert.ok(texts.includes('THIS RUN') && texts.includes('LIFETIME'), 'both columns headed');
+  for (const f of Stats.FIELDS) {
+    assert.ok(texts.includes(f.label), `expected a "${f.label}" row in ${JSON.stringify(texts)}`);
+  }
+});
+
+test('the stats panel prints the run tally, grouped in thousands', () => {
+  const texts = statsTexts((state) => {
+    Stats.bump(state.player, 'tiles', 19204);
+    Stats.bump(state.player, 'swings', 210);
+  });
+  assert.ok(texts.includes('19,204'), `expected a grouped tile count in ${JSON.stringify(texts)}`);
+  assert.ok(texts.includes('210'), 'swing count drawn');
+});
+
+// The lifetime column is stored-total + live run, so an in-progress run is
+// visible in it without having been banked yet. Once banked (statsBanked, set at
+// the death transition) the stored total already contains the run.
+test('lifetime shows stored plus the live run, and stops adding once banked', () => {
+  const run = Stats.create();
+  run.kills = 6;
+  const live = UI._.tallies({ player: { stats: run }, statsBanked: false });
+  assert.equal(live.run.kills, 6);
+  assert.equal(live.lifetime.kills, 6, 'no Save in node: stored reads as zero, run still shows');
+
+  const banked = UI._.tallies({ player: { stats: run }, statsBanked: true });
+  assert.equal(banked.lifetime.kills, 0, 'a banked run is not added on top of storage again');
 });

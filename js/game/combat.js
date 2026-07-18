@@ -135,6 +135,9 @@
   // ---- Combat ----
 
   function hitMonster(state, m, dmg, stats, kbAngle, kbForce, killer) {
+    // Damage dealt is credited to whoever swung; monster-on-monster splash has no
+    // killer, and Stats.bump no-ops on a missing owner.
+    Stats.bump(killer, 'dealt', Math.min(dmg, Math.max(0, m.hp)));
     m.hp -= dmg;
     m.hitT = 0.16;
     m.aggroed = true;
@@ -163,6 +166,7 @@
     const stats = Entities.effectiveStats(p);
     const raw = typeof rawDmgOrFn === 'function' ? rawDmgOrFn() : rawDmgOrFn;
     const dmg = Entities.damageAfterDefense(raw, stats.defense);
+    Stats.bump(p, 'taken', dmg);
     p.hp -= dmg;
     p.hurtT = 0.3;
     state.shake = Math.min(8, state.shake + (opts.shake || 2.5));
@@ -256,6 +260,7 @@
 
     if (stats.kind === 'melee') {
       p.swing = { t: 0, dur: Math.min(0.24, 0.8 / stats.speed), facing: p.facing, radius: stats.radius, arc: stats.arc };
+      Stats.bump(p, 'swings');
       G.sfx(state, 'swing');
       let hitAny = false;
       for (const m of [...state.monsters]) {
@@ -292,6 +297,7 @@
       ttl: 1.8,
       angle: a,
     });
+    Stats.bump(p, 'shots');
     G.sfx(state, projKind === 'fireball' ? 'fireball' : 'bow');
   }
   G.playerAttack = playerAttack;
@@ -433,6 +439,8 @@
 
   function killMonster(state, m, stats, killer = state.player) {
     state.kills++;
+    Stats.bump(killer, 'kills');
+    if (m.boss) Stats.bump(killer, 'bosses');
     state.monsters.splice(state.monsters.indexOf(m), 1);
     G.questProgress(state, (q) => Quests.recordKill(q, m));
     state.events.push({ type: 'kill', monsterId: m.id, x: m.x, y: m.y, champion: !!m.champion, boss: !!m.boss });
@@ -496,6 +504,8 @@
     const stats = Entities.effectiveStats(p);
     p.mana -= def.active.mana;
     p.skillCd[id] = def.active.cd;
+    // Past every early return above: the cast is committed and paid for.
+    Stats.bump(p, 'casts');
 
     if (id === 'whirlwind') {
       const reachBase = stats.radius * 1.15;
