@@ -30,6 +30,7 @@ function starterBlob(name, shirt) {
       mana: p.mana,
       skillPoints: 0,
       skills: {},
+      prof: Entities.newProficiency(),
       equip: p.equip,
     },
     bag: Items.createBag(),
@@ -68,6 +69,7 @@ function playerFromCharacter(blob, id) {
   p.baseDamage = sp.baseDamage || 0;
   p.skillPoints = sp.skillPoints || 0;
   p.skills = sp.skills || {};
+  p.prof = Object.assign(Entities.newProficiency(), sp.prof || {});
   if (sp.equip) {
     for (const key of Object.keys(p.equip)) p.equip[key] = sp.equip[key] || null;
     if (!p.equip.weapon) p.equip.weapon = Entities.starterWeapon();
@@ -106,6 +108,7 @@ function characterBlob(state, player, bag) {
       mana: p.mana,
       skillPoints: p.skillPoints,
       skills: p.skills,
+      prof: p.prof,
       equip: p.equip,
     },
     bag: bag || state.bag,

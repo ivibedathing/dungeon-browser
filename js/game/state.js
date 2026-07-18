@@ -187,6 +187,8 @@
     p.baseDamage = sp.baseDamage || 0;
     p.skillPoints = sp.skillPoints || 0;
     p.skills = sp.skills || {};
+    // Pre-proficiency saves have no `prof`; they resume at zero rather than failing.
+    p.prof = Object.assign(Entities.newProficiency(), sp.prof || {});
     if (sp.equip) {
       for (const key of Object.keys(p.equip)) {
         p.equip[key] = sp.equip[key] || null;

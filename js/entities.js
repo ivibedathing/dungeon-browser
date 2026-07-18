@@ -21,6 +21,48 @@
     affixes: [],
   });
 
+  // ---- Weapon proficiency ----
+  // Per weapon KIND (not per item), so trading up to a better sword keeps your
+  // swordsmanship. Knobs live in Balance.proficiency; see the note there for the curve.
+  const PR = Balance.proficiency;
+
+  E.PROF_KINDS = PR.kinds;
+
+  // XP past which the bonus is already capped — the point where k·log2(1+xp/scale)
+  // reaches maxBonus. Derived, so it can never drift from the balance sheet.
+  E.PROF_XP_CAP = Math.ceil(PR.scale * (Math.pow(2, PR.maxBonus / PR.k) - 1));
+
+  E.newProficiency = function () {
+    const prof = {};
+    for (const kind of PR.kinds) prof[kind] = 0;
+    return prof;
+  };
+
+  // Tolerant reader: old saves (and any player built before proficiency existed) have
+  // no `prof` at all, and unknown kinds read as zero rather than throwing.
+  E.profXP = function (player, kind) {
+    const v = player && player.prof && player.prof[kind];
+    return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+  };
+
+  // The damage multiplier bonus for `kind`, as a fraction (0.15 = +15%). Capped.
+  E.profBonus = function (player, kind) {
+    if (!PR.kinds.includes(kind)) return 0;
+    const xp = E.profXP(player, kind);
+    if (xp <= 0) return 0;
+    return Math.min(PR.maxBonus, PR.k * Math.log2(1 + xp / PR.scale));
+  };
+
+  // Credits proficiency XP for `kind`. Returns the bonus gained (0 once capped), so
+  // callers can decide whether the milestone is worth surfacing to the player.
+  E.gainProficiency = function (player, kind, amount) {
+    if (!PR.kinds.includes(kind) || !(amount > 0)) return 0;
+    if (!player.prof) player.prof = E.newProficiency();
+    const before = E.profBonus(player, kind);
+    player.prof[kind] = Math.min(E.PROF_XP_CAP, E.profXP(player, kind) + amount);
+    return E.profBonus(player, kind) - before;
+  };
+
   E.newPlayer = function (opts) {
     const equip = {};
     for (const slot of Items.EQUIP_SLOTS) equip[slot] = null;
@@ -37,6 +79,7 @@
       mana: P.baseMana,
       skillPoints: 0,
       skills: {},
+      prof: E.newProficiency(),
       equip,
       // Each hero owns their bag (co-op: instanced loot goes to p.bag). Solo/local
       // play reads it through the state.bag alias, so the save format is unchanged.
@@ -47,8 +90,12 @@
   E.effectiveStats = function (player) {
     const g = Items.aggregateStats(player.equip);
     const sk = Skills.passives(player);
+    // Mastery of the equipped weapon's kind scales the whole damage figure, so it
+    // stacks multiplicatively with skill passives rather than inflating base damage.
+    const prof = 1 + E.profBonus(player, g.kind);
     return {
-      damage: (player.baseDamage + g.damage) * sk.dmgMult,
+      damage: (player.baseDamage + g.damage) * sk.dmgMult * prof,
+      profBonus: prof - 1,
       radius: g.radius,
       kind: g.kind,
       arc: g.arc,

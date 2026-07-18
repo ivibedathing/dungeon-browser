@@ -55,6 +55,7 @@
         mana: p.mana,
         skillPoints: p.skillPoints,
         skills: p.skills,
+        prof: p.prof,
         equip: p.equip,
       },
       bag: state.bag,
