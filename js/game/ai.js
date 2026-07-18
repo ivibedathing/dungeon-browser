@@ -55,10 +55,50 @@
     const flow = state.flow.field;
     const flowDist = Dungeon.flowAt(flow, mtx, mty);
 
-    if (!m.aggroed && flowDist * TS <= m.aggro) m.aggroed = true;
+    // Leash: a chase that has dragged a monster too far from where it lives is
+    // abandoned, and it walks home. This is what stops a conga line forming
+    // across a 65,536-px map as every monster you run past joins the train.
+    // `returning` is the hysteresis — without it a monster at the leash edge
+    // would re-aggro on the same frame it gave up.
+    if (m.home) {
+      const leashPx = (m.leash || Balance.world.leashTiles) * TS;
+      const fromHome = Math.hypot(m.x - m.home.x, m.y - m.home.y);
+      if (m.returning) {
+        if (fromHome <= leashPx * 0.35) {
+          m.returning = false;
+          m.wp = null;
+        }
+      } else if (m.aggroed && fromHome > leashPx) {
+        m.returning = true;
+        m.aggroed = false;
+      }
+    }
+
+    if (!m.aggroed && !m.returning && flowDist * TS <= m.aggro) m.aggroed = true;
 
     if (!m.aggroed) {
-      // Idle wander.
+      G.wanderStep(state, m, dt, mr);
+      return;
+    }
+
+    // Per-type behavior. Everything above is shared upkeep every monster needs
+    // (timers, knockback, stun, aggro, idle wander); everything below is how this
+    // particular monster fights. A monster with no `behavior` — which is every
+    // regular monster in the game — takes the melee path unchanged.
+    const ctx = { p, dist, mr, flow, flowDist, mtx, mty };
+    const behave = (m.behavior && G.BEHAVIORS[m.behavior]) || G.BEHAVIORS.melee;
+    behave(state, m, dt, ctx);
+  };
+
+  // Idle movement. A floor spawn has no `home` and keeps the original
+  // random-angle jitter verbatim — including its exact draws from state.srand,
+  // which the dungeon traces are pinned against. A world resident has a home,
+  // and drifts between waypoints inside its leash instead: at overworld
+  // distances, jittering on the spot reads as a broken animation, and a monster
+  // that never moves more than a few pixels from its spawn tile makes the
+  // country feel staged rather than lived in.
+  G.wanderStep = function wanderStep(state, m, dt, mr) {
+    if (!m.home) {
       m.wanderT -= dt;
       if (m.wanderT <= 0) {
         m.wanderT = 1 + state.srand() * 2.2;
@@ -74,13 +114,42 @@
       return;
     }
 
-    // Per-type behavior. Everything above is shared upkeep every monster needs
-    // (timers, knockback, stun, aggro, idle wander); everything below is how this
-    // particular monster fights. A monster with no `behavior` — which is every
-    // regular monster in the game — takes the melee path unchanged.
-    const ctx = { p, dist, mr, flow, flowDist, mtx, mty };
-    const behave = (m.behavior && G.BEHAVIORS[m.behavior]) || G.BEHAVIORS.melee;
-    behave(state, m, dt, ctx);
+    const leashPx = (m.leash || Balance.world.leashTiles) * TS;
+    m.wanderT -= dt;
+    if (m.returning) {
+      m.wp = m.home;
+    } else if (!m.wp || m.wanderT <= 0) {
+      m.wanderT = 2 + state.srand() * 3;
+      if (state.srand() < 0.75) {
+        const a = state.srand() * Math.PI * 2;
+        const r = state.srand() * leashPx * 0.8;
+        m.wp = { x: m.home.x + Math.cos(a) * r, y: m.home.y + Math.sin(a) * r };
+      } else {
+        m.wp = null; // stand and watch a while
+      }
+    }
+    if (!m.wp) return;
+
+    const dx = m.wp.x - m.x;
+    const dy = m.wp.y - m.y;
+    const d = Math.hypot(dx, dy);
+    if (d < 8) {
+      m.wp = null;
+      m.wanderT = Math.min(m.wanderT, 0.5 + state.srand() * 1.5);
+      return;
+    }
+    // Heading home is a purposeful walk; drifting between waypoints is a stroll.
+    const pace = m.returning ? 0.6 : 0.35;
+    const v = m.speed * Entities.statusMoveMult(m) * (m.speedMult || 1) * pace * dt;
+    const moved = G.moveCircle(state.dungeon.grid, m.x, m.y, mr, (dx / d) * v, (dy / d) * v);
+    // Walked into a cliff or a shoreline: this waypoint is unreachable, so drop
+    // it and pick another rather than grinding against the terrain forever.
+    if (moved.x === m.x && moved.y === m.y) {
+      m.wp = null;
+      m.wanderT = 0;
+    }
+    m.x = moved.x;
+    m.y = moved.y;
   };
 
   G.BEHAVIORS = {};

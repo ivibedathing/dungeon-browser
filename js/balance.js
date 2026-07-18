@@ -183,10 +183,12 @@
     safeRing: 1, // the town chunk and its eight neighbours spawn nothing at all
 
     // Monsters per chunk: base + perRing*ring, capped, jittered by the chunk roll.
-    densityBase: 3,
-    densityPerRing: 0.85,
-    densityCap: 14,
-    densityJitter: 3, // + rand(0..densityJitter)
+    // Sized so a 5x5 live block holds ~150 monsters at depth — the same order as
+    // one dungeon floor, which is what keeps the per-frame sim budget flat.
+    densityBase: 2,
+    densityPerRing: 0.45,
+    densityCap: 8,
+    densityJitter: 2, // + rand(0..densityJitter)
 
     championBase: 0.05,
     championPerRing: 0.022,

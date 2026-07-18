@@ -503,6 +503,9 @@
     Stats.bump(killer, 'kills');
     if (m.boss) Stats.bump(killer, 'bosses');
     state.monsters.splice(state.monsters.indexOf(m), 1);
+    // Out in the world a kill is also chunk bookkeeping: clearing a chunk keeps
+    // it clear until its respawn timer is up.
+    if (state.inWorld && G.worldMonsterKilled) G.worldMonsterKilled(state, m);
     G.questProgress(state, (q) => Quests.recordKill(q, m));
     G.mainQuestKill(state, m, killer || state.player);
     state.events.push({ type: 'kill', monsterId: m.id, x: m.x, y: m.y, champion: !!m.champion, boss: !!m.boss });

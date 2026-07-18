@@ -89,14 +89,98 @@
   };
 
   // Instantiate a chunk's content. Terrain is already written by ensureChunk;
-  // this is the streaming half. Phase 3 fills in the population roll.
+  // this is the streaming half.
   G.activateChunk = function activateChunk(state, cx, cy) {
     const w = state.world;
     World.ensureChunk(w.world, cx, cy);
     const k = key(cx, cy);
     if (w.active.has(k)) return;
     w.active.add(k);
-    if (G.populateChunk) G.populateChunk(state, cx, cy);
+    G.populateChunk(state, cx, cy);
+  };
+
+  // Stand up one chunk's monsters, props and braziers. A chunk the party has
+  // already cleared stays empty until its respawn timer is up.
+  G.populateChunk = function populateChunk(state, cx, cy) {
+    const w = state.world;
+    const k = key(cx, cy);
+    const content = World.rollChunkContent(w.world, cx, cy);
+    const partyN = state.partyN || (state.players && state.players.length) || 1;
+    const rnd = state.srand || Math.random;
+
+    if (!w.cleared[k]) {
+      for (const s of content.monsters) {
+        state.monsters.push(G.spawnWorldMonster(state, Entities.makeMonster(s.type, content.floor, s.champion, partyN), s, k));
+      }
+      if (content.boss) {
+        const boss = G.spawnWorldMonster(state, Entities.makeBoss(content.floor, partyN), content.boss, k);
+        // A world boss holds its ground rather than roaming: it is a landmark,
+        // and one that wanders is one you cannot pin on a map.
+        boss.worldBoss = true;
+        boss.leash = 6;
+        state.monsters.push(boss);
+        w.bosses = w.bosses || {};
+        w.bosses[k] = { x: content.boss.x, y: content.boss.y, name: boss.name, seen: false, slain: false };
+      }
+    }
+
+    // Props and braziers are scenery: they come back with the chunk regardless of
+    // whether its monsters have been cleared.
+    for (const d of content.props) {
+      const hp = Props.hp(d.type);
+      state.props.push({
+        id: state.nextId++,
+        chunk: k,
+        type: d.type,
+        x: (d.x + 0.5) * TS,
+        y: (d.y + 0.5) * TS,
+        size: (Props.TYPES[d.type] || {}).size || 11,
+        hp,
+        maxHP: hp,
+        hitT: 0,
+      });
+    }
+    for (const t of content.torches) state.dungeon.torches.push({ x: t.x, y: t.y, chunk: k });
+    void rnd;
+  };
+
+  // A resident died. When the last one in a chunk falls the chunk counts as
+  // cleared and stops restocking until respawnSeconds have passed — so a cleared
+  // stretch of country stays cleared while you loot it, and is dangerous again
+  // by the time you come back through.
+  G.worldMonsterKilled = function worldMonsterKilled(state, m) {
+    const w = state.world;
+    if (!w || m.chunk === undefined) return;
+    if (m.worldBoss && w.bosses && w.bosses[m.chunk]) w.bosses[m.chunk].slain = true;
+    if (state.monsters.some((o) => o.chunk === m.chunk)) return;
+    w.cleared[m.chunk] = true;
+    w.respawn[m.chunk] = state.time + Balance.world.respawnSeconds;
+  };
+
+  // The shared shape of a monster standing in the world. `home` and `chunk` are
+  // what make it a resident rather than a floor spawn: home anchors its leash,
+  // chunk is what deactivation and clear-tracking key off.
+  G.spawnWorldMonster = function spawnWorldMonster(state, base, cell, chunkKey) {
+    const x = (cell.x + 0.5) * TS;
+    const y = (cell.y + 0.5) * TS;
+    const rnd = state.srand || Math.random;
+    return {
+      ...base,
+      id: state.nextId++,
+      chunk: chunkKey,
+      home: { x, y },
+      wp: null,
+      x,
+      y,
+      attackT: rnd() * 0.5,
+      hitT: 0,
+      lungeT: 0,
+      wanderT: rnd() * 2,
+      wandA: NaN,
+      aggroed: false,
+      kbx: 0,
+      kby: 0,
+    };
   };
 
   // Drop a chunk's content. Anything tagged with this chunk goes; terrain stays
@@ -140,6 +224,24 @@
     const biome = World.biomeAt(w.world.seed, Math.floor(p.x / TS), Math.floor(p.y / TS));
     if (state.dungeon.theme !== biome) state.dungeon.theme = biome;
 
+    // A world boss you have laid eyes on gets pinned on the map, so finding one
+    // is a discovery you can come back to rather than a thing you must fight now.
+    if (w.bosses) {
+      const sightPx = state.dungeon.sightTiles * TS;
+      for (const m of state.monsters) {
+        if (!m.worldBoss) continue;
+        const rec = w.bosses[m.chunk];
+        if (!rec || rec.seen) continue;
+        const spotted = state.players.some((pl) => !pl.dead && U.dist2(pl.x, pl.y, m.x, m.y) < sightPx * sightPx);
+        if (!spotted) continue;
+        rec.seen = true;
+        rec.x = Math.floor(m.x / TS);
+        rec.y = Math.floor(m.y / TS);
+        G.message(state, `${m.name} prowls here — marked on your map.`, '#ff5c4d');
+        G.sfx(state, 'roar');
+      }
+    }
+
     // Cleared chunks repopulate once their timer is up — but only while they are
     // out of the live set, so a chunk never restocks in front of the player.
     const rs = w.respawn;
@@ -173,6 +275,9 @@
     state.world.world = world;
     state.inWorld = true;
     state.inTown = false;
+    // The world has no floor number to key its RNG on, so it draws from the run
+    // seed. Every gameplay-affecting roll out here still comes off one stream.
+    if (!state.srand) state.srand = U.mulberry32((((state.runSeed >>> 0) ^ 0x0517) >>> 0) + 1);
 
     const level = G.makeOverworldLevel(world);
     state.dungeon = level;

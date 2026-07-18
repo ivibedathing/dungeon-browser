@@ -12,6 +12,9 @@
 (function () {
   const U = typeof require === 'function' ? require('./util.js') : window.U;
   const D = typeof require === 'function' ? require('./dungeon.js') : window.Dungeon;
+  const Balance = typeof require === 'function' ? require('./balance.js') : window.Balance;
+  const Entities = typeof require === 'function' ? require('./entities.js') : window.Entities;
+  const Props = typeof require === 'function' ? require('./props.js') : window.Props;
 
   const World = {};
 
@@ -276,6 +279,115 @@
     for (let y = cy - radius; y <= cy + radius; y++) {
       for (let x = cx - radius; x <= cx + radius; x++) World.ensureChunk(world, x, y);
     }
+  };
+
+  // ---- Population ----
+  // Ring drives an EFFECTIVE FLOOR that feeds straight into the dungeon's own
+  // E.makeMonster, so hp/dmg/xp scaling, champion rolls, and the minFloor type
+  // pool all come along unchanged — there is no second balance curve here, only
+  // a mapping from "how far from home" to "how deep this would be".
+  World.effectiveFloor = function (ring) {
+    const B = Balance.world;
+    if (ring <= B.safeRing) return 0;
+    return Math.max(1, Math.round(B.floorPerRing * ring));
+  };
+
+  // The per-chunk RNG. Used ONLY for point features that fit inside this chunk —
+  // never for anything that crosses its border. See the note at the top.
+  World.chunkRng = (seed, cx, cy) => U.mulberry32(U.hash2((seed ^ 0x9051) | 0, cx, cy));
+
+  // How much lives here, before any tiles are picked. Pure in (seed, cx, cy), so
+  // the server and every client agree on a chunk's budget without talking.
+  World.budgetOf = function (seed, cx, cy) {
+    const B = Balance.world;
+    const ring = World.ringOf(cx, cy);
+    const floor = World.effectiveFloor(ring);
+    if (!floor) return { ring, floor: 0, count: 0, championChance: 0, boss: false };
+    const rng = World.chunkRng(seed, cx, cy);
+    const count = Math.min(
+      B.densityCap,
+      Math.round(B.densityBase + B.densityPerRing * ring) + U.randInt(rng, 0, B.densityJitter)
+    );
+    const championChance = Math.min(B.championCap, B.championBase + B.championPerRing * ring);
+    const boss = ring >= B.bossMinRing && rng() < B.bossChance;
+    return { ring, floor, count, championChance, boss };
+  };
+
+  // The full content of one chunk: where each monster, prop and brazier stands.
+  // Requires the chunk's terrain to be written already (spawn tiles are chosen
+  // from it), and is deterministic given the same terrain.
+  World.rollChunkContent = function (world, cx, cy) {
+    const seed = world.seed;
+    const budget = World.budgetOf(seed, cx, cy);
+    const out = { ...budget, monsters: [], boss: null, props: [], torches: [] };
+    const C = World.CHUNK;
+    const x0 = cx * C;
+    const y0 = cy * C;
+    const grid = world.grid;
+    // A second, independent stream from the budget roll, so tuning the density
+    // curve doesn't reshuffle where everything stands.
+    const rng = U.mulberry32(U.hash2((seed ^ 0x7115) | 0, cx, cy));
+    const taken = new Set();
+
+    // Pick a tile inside this chunk passing `ok`, or null after 24 tries.
+    const pick = (ok) => {
+      for (let t = 0; t < 24; t++) {
+        const x = x0 + U.randInt(rng, 1, C - 2);
+        const y = y0 + U.randInt(rng, 1, C - 2);
+        const k = y * World.SIZE + x;
+        if (taken.has(k)) continue;
+        if (!ok(x, y)) continue;
+        taken.add(k);
+        return { x, y };
+      }
+      return null;
+    };
+    const walkable = (x, y) => D.isWalkable(grid[y][x]);
+    // Props and braziers stay off the roads — a road you cannot walk down
+    // without smashing furniture is not a road.
+    const openGround = (x, y) => grid[y][x] === D.TILE.FLOOR;
+
+    if (budget.floor) {
+      for (let i = 0; i < budget.count; i++) {
+        const cell = pick(walkable);
+        if (!cell) break;
+        out.monsters.push({
+          x: cell.x,
+          y: cell.y,
+          type: Entities.pickMonsterType(rng, budget.floor),
+          champion: rng() < budget.championChance,
+        });
+      }
+      if (budget.boss) {
+        const cell = pick(walkable);
+        if (cell) out.boss = { x: cell.x, y: cell.y };
+      }
+    }
+
+    const P = Balance.world.propsPerChunk;
+    const nProps = U.randInt(rng, P.min, P.max);
+    for (let i = 0; i < nProps; i++) {
+      const cell = pick(openGround);
+      if (!cell) break;
+      out.props.push({ x: cell.x, y: cell.y, type: Props.pickType(rng, Math.max(1, budget.floor)) });
+    }
+
+    // A roadside brazier: found by looking for open ground beside a road, so the
+    // light marks the route rather than landing in empty wilderness.
+    if (rng() < Balance.world.torchChance) {
+      const cell = pick((x, y) => {
+        if (grid[y][x] !== D.TILE.FLOOR) return false;
+        return (
+          grid[y][x + 1] === D.TILE.ROAD ||
+          grid[y][x - 1] === D.TILE.ROAD ||
+          (grid[y + 1] && grid[y + 1][x] === D.TILE.ROAD) ||
+          (grid[y - 1] && grid[y - 1][x] === D.TILE.ROAD)
+        );
+      });
+      if (cell) out.torches.push({ x: cell.x, y: cell.y });
+    }
+
+    return out;
   };
 
   if (typeof window !== 'undefined') window.World = World;
