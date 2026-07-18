@@ -38,7 +38,7 @@ function freshPlayer(id, opts) {
 function idleInput() {
   const keys = {};
   for (const k of Protocol.KEYS) keys[k] = false;
-  return { keys, pressed: new Set(), mouse: { x: -1, y: -1, click: false, rclick: false }, seq: -1 };
+  return { keys, pressed: new Set(), mouse: { x: -1, y: -1, click: false, rclick: false }, aim: null, seq: -1 };
 }
 
 class Room {
@@ -112,6 +112,7 @@ class Room {
     buf.seq = msg.seq;
     buf.keys = { ...msg.keys };
     buf.mouse = { ...msg.mouse };
+    buf.aim = typeof msg.aim === 'number' ? msg.aim : null;
     // Edges accumulate: several packets can land between two ticks and every
     // press must survive to be consumed exactly once.
     for (const a of msg.pressed) buf.pressed.add(a);

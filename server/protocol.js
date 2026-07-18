@@ -164,7 +164,17 @@ function validateInput(msg) {
     rclick: msg.mouse.rclick === true,
   };
 
-  return { ok: true, msg: { t: 'input', seq: msg.seq, keys, pressed, mouse } };
+  // Mouse-look aim: a world-space facing angle the client derives from its camera.
+  // Optional (older clients omit it → the sim faces the travel direction), but a
+  // present value drives facing and thus attack direction, so NaN/Infinity — which
+  // would poison every downstream angle — are rejected, not coerced.
+  let aim = null;
+  if (msg.aim !== undefined && msg.aim !== null) {
+    if (!isFiniteNumber(msg.aim)) return fail('bad aim');
+    aim = msg.aim;
+  }
+
+  return { ok: true, msg: { t: 'input', seq: msg.seq, keys, pressed, mouse, aim } };
 }
 
 function validateJoin(msg) {
@@ -196,7 +206,9 @@ P.validateClient = function (msg) {
 P.toSimInput = function (msg) {
   const keys = {};
   for (const k of P.KEYS) keys[k] = msg.keys[k] === true;
-  return { keys, pressed: new Set(msg.pressed), mouse: { ...msg.mouse } };
+  const input = { keys, pressed: new Set(msg.pressed), mouse: { ...msg.mouse } };
+  if (typeof msg.aim === 'number') input.aim = msg.aim;
+  return input;
 };
 
 // ---- Rate limiting ----
