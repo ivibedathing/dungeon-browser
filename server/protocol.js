@@ -274,10 +274,47 @@ P.validateClient = function (msg) {
       return checkSlot(msg.slot) ? { ok: true, msg: { t: 'selectChar', slot: msg.slot } } : fail('bad slot');
     case 'deleteChar':
       return checkSlot(msg.slot) ? { ok: true, msg: { t: 'deleteChar', slot: msg.slot } } : fail('bad slot');
+    case 'intent':
+      return validateIntent(msg);
     default:
       return fail('unknown message type');
   }
 };
+
+// Progression intents (Phase 4.5 Track C). Each intent carries ONLY the indices/ids
+// it needs — never stats, prices, or item objects. We reject any intent carrying an
+// unexpected key (a forged `damage`/`price`/`stats` field is a kick, not a no-op), so
+// a client cannot smuggle a number the server would trust.
+const INTENT_FIELDS = Object.freeze({
+  equip: ['slot'],
+  unequip: ['slotName'],
+  sell: ['slot'],
+  upgrade: ['slotName'],
+  learn: ['skillId'],
+  buy: ['index'],
+});
+const STRING_FIELDS = new Set(['slotName', 'skillId']);
+
+function validateIntent(msg) {
+  const fields = INTENT_FIELDS[msg.intent];
+  if (!fields) return fail('unknown intent');
+  const allowed = new Set(['t', 'intent', ...fields]);
+  for (const k of Object.keys(msg)) {
+    if (!allowed.has(k)) return fail(`unexpected intent key ${String(k).slice(0, 24)}`);
+  }
+  const out = { t: 'intent', intent: msg.intent };
+  for (const f of fields) {
+    const v = msg[f];
+    if (STRING_FIELDS.has(f)) {
+      if (typeof v !== 'string' || v.length > 40) return fail(`bad ${f}`);
+      out[f] = v;
+    } else {
+      if (!Number.isInteger(v) || v < 0 || v > 1000) return fail(`bad ${f}`);
+      out[f] = v;
+    }
+  }
+  return { ok: true, msg: out };
+}
 
 // Validated wire input -> the exact shape js/game expects (pressed as a Set).
 P.toSimInput = function (msg) {

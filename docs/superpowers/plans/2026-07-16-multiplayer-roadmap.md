@@ -122,6 +122,42 @@ Exit met: 112/112 tests (7 new), solo verified in-browser, six TDD commits.
 - New snapshot fields for the authority/ref work: `down`/`downT`/`reviveT`, `descendT`, and
   ground items already carry `ownerId` (Task 9's ref rework must preserve it).
 
+## Phase 4.5 — Client preload & server authority ✅ *(landed 2026-07-18, branch `phase4_5-preload-authority` merged to `main`)*
+
+> Plan: `docs/superpowers/plans/2026-07-18-phase4_5-client-preload-and-authority.md`
+
+**Track B (serving) + Track C (server authority) landed in full; Track A landed the boot
+infrastructure + audio/asset preload.** The phase's core value — *one origin, and the
+client can't cheat a server number* — is delivered and test-pinned.
+
+- **Track A — preload (boot + audio + assets):** `js/boot.js` — ordered weighted steps with
+  the fallback guarantee (a non-required failure is recorded, never fatal). `Sfx.warm()`
+  pre-creates the noise buffer safely on a suspended context. `js/assets.js` — optional
+  manifest loader that never rejects; every failure mode (empty/malformed/unreachable
+  manifest, a 404 entry, `file://`) falls back to procedural. Ships `assets/manifest.json`
+  empty. Wired as background boot steps in `main.js`.
+- **Track B — serving:** `server/static.js` — a `node:http` static handler (MIME, cache
+  headers — `no-cache` for index/manifest, `immutable` only for content-hashed URLs, ETag
+  revalidate otherwise, pre-filesystem traversal rejection). `server.js` now runs one HTTP
+  server with the ws server on its `upgrade` events, so client + socket share one origin;
+  `main.js` derives the ws URL from the page origin with a `:8080` dev fallback.
+- **Track C — server authority (the headline):** `server/intents.js` applies
+  equip/unequip/sell/upgrade/learn/buy against the SERVER's copy of the player's
+  bag/equip/skills, recomputing stats from server tables. `protocol.js` validates intents as
+  indices/ids only and **rejects any forged `damage`/`price`/`stats` key** (a kick, not a
+  no-op). `server/schema.js` sanitizes stored blobs on load (clamp/drop inflated stats & junk;
+  broken blob ⇒ fresh starter; legit blob unchanged). `test/authority.test.js` pins the whole
+  boundary (no presentation import in sim/server; forged fields never land; server prices
+  enforced; persisted values are server-computed).
+- Exit met: **309 tests** (+40 across boot/audio/assets/static/intents/charschema/authority),
+  test-first, solo/offline untouched (all preload is non-required with procedural fallback).
+- **Deferred as perf/bandwidth follow-ups** (no user-facing correctness impact; documented so
+  they aren't forgotten): Task 2 render-cache *draw-through* wiring into tiles/icons
+  (`Render.cached` infra pattern is straightforward but browser-only to verify), Task 6 the
+  service worker offline shell, and Task 9 sending ground items as refs. The client-side
+  intent *emit* path (online equip/buy UI → `net.sendIntent`) is likewise a browser wiring
+  follow-up; the authoritative server side is complete.
+
 ## Phase 5 — Hardening & deploy (~1 session)
 
 - Fuzz the protocol (random/mutated payloads must never crash a room).
@@ -131,7 +167,8 @@ Exit met: 112/112 tests (7 new), solo verified in-browser, six TDD commits.
 
 ## Dependency graph
 
-Phase 0 → 1 → 2 → 4 → 5, with 3 parallel-safe after 1 (2 and 3 don't touch the same files).
+Phase 0 → 1 → 2 → 4 → 4.5 → 5, with 3 parallel-safe after 1 (2 and 3 don't touch the same
+files). Phase 4.5's Track C built on Phase 4's attacker-aware combat.
 
 ## Standing constraints (all phases)
 

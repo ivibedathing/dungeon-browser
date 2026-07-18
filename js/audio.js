@@ -37,12 +37,25 @@
     return muted;
   };
 
+  // The one genuinely expensive allocation on the SFX path. Extracted so boot can
+  // pre-create it (Sfx.warm) instead of paying for it the first time a sound fires.
+  function makeNoiseBuf() {
+    noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.6), ctx.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+
+  // Pre-create the noise buffer at boot. Safe to call with a SUSPENDED context (buffer
+  // creation is legal pre-gesture) — it never resumes audio, so it can't fail or force a
+  // click before the menu. A no-op where there is no AudioContext (node/headless).
+  Sfx.warm = function () {
+    ensure();
+    if (ctx && !noiseBuf) makeNoiseBuf();
+    return Promise.resolve();
+  };
+
   function noiseSource() {
-    if (!noiseBuf) {
-      noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.6), ctx.sampleRate);
-      const d = noiseBuf.getChannelData(0);
-      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    }
+    if (!noiseBuf) makeNoiseBuf();
     const src = ctx.createBufferSource();
     src.buffer = noiseBuf;
     return src;

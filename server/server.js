@@ -9,10 +9,14 @@
 // Embed in tests: createServer({ port: 0 }) → { wss, rooms, port, close }.
 'use strict';
 
+const http = require('node:http');
+const path = require('node:path');
 const { WebSocketServer } = require('ws');
+const { createStatic } = require('./static.js');
 const Protocol = require('./protocol.js');
 const { Room } = require('./room.js');
 const Character = require('./character.js');
+const Intents = require('./intents.js');
 const { createStore } = require('./store.js');
 
 // Join codes are drawn from a confusable-free alphabet (see protocol) so a code
@@ -38,7 +42,16 @@ function createServer(opts = {}) {
   const ready = Promise.resolve(store.init ? store.init() : undefined);
   const onError = opts.onError || ((err) => console.error('[server]', err && err.message ? err.message : err));
 
-  const wss = new WebSocketServer({ port, maxPayload: Protocol.MAX_MSG_BYTES });
+  // Serve the client and the WebSocket on ONE origin: an http listener handles static
+  // GETs, and the ws server rides its `upgrade` events. `serveStatic: false` (or a
+  // missing client root) leaves the http server answering 404s — the ws still works.
+  const staticHandler = opts.serveStatic === false ? null : createStatic({ root: path.join(__dirname, '..') });
+  const httpServer = http.createServer((req, res) => {
+    if (staticHandler && staticHandler(req, res)) return;
+    res.writeHead(404, { 'Content-Type': 'text/plain' }).end('not found');
+  });
+  const wss = new WebSocketServer({ server: httpServer, maxPayload: Protocol.MAX_MSG_BYTES });
+  httpServer.listen(port);
   const rooms = new Map(); // code -> Room
 
   // Per-connection state hangs off the socket. Auth fields are null until a
@@ -198,6 +211,19 @@ function createServer(opts = {}) {
     peer.room.setInput(peer.id, msg);
   }
 
+  // Progression intents are applied against the SERVER's copy of the acting player's
+  // bag/equip/skills (Intents.apply), recomputing stats from server tables. A rejected
+  // intent gets a `reject` frame so the client's optimistic prediction can be corrected.
+  function handleIntent(ws, msg) {
+    const peer = ws._peer;
+    if (!peer.room) return kick(ws, Protocol.ERR.NOT_JOINED);
+    const player = peer.room.state.players.find((p) => p.id === peer.id);
+    if (!player) return;
+    const res = Intents.apply(peer.room.state, player, msg);
+    if (!res.ok) send(ws, { t: 'reject', intent: msg.intent, reason: res.reason });
+    else if (peer.accountId != null) saveForPlayer(peer.room, peer.id, 'intent'); // persist gear/gold/skill changes
+  }
+
   // ---- Save triggers (fire-and-forget; never awaited on the tick path) ----
 
   function peerFor(room, playerId) {
@@ -260,6 +286,7 @@ function createServer(opts = {}) {
       // funnel through one catch so a store error kicks rather than crashes the room.
       if (msg.t === 'input') return handleInput(ws, msg);
       if (msg.t === 'join') return handleJoin(ws, msg);
+      if (msg.t === 'intent') return handleIntent(ws, msg);
       if (msg.t === 'ping') return send(ws, { t: 'pong', ts: msg.ts });
 
       const async =
@@ -338,10 +365,11 @@ function createServer(opts = {}) {
     clearInterval(ping);
     for (const ws of wss.clients) ws.terminate();
     await new Promise((resolve) => wss.close(resolve));
+    await new Promise((resolve) => httpServer.close(resolve));
     if (store.close) await store.close();
   }
 
-  const api = { wss, rooms, store, ready, close, tickHz, get port() { return wss.address() ? wss.address().port : port; } };
+  const api = { wss, httpServer, rooms, store, ready, close, tickHz, get port() { const a = httpServer.address(); return a ? a.port : port; } };
   return api;
 }
 
@@ -351,11 +379,12 @@ module.exports = { createServer };
 if (require.main === module) {
   const srv = createServer();
   const persistent = !!(process.env.DATABASE_URL);
-  srv.wss.on('listening', () => {
-    const addr = srv.wss.address();
-    console.log(`Dungeon Browser server listening on ws://0.0.0.0:${addr.port} (${srv.tickHz} Hz)`);
+  const announce = () => {
+    console.log(`Dungeon Browser server listening on http+ws://0.0.0.0:${srv.port} (${srv.tickHz} Hz) — serves the client and the WebSocket on one origin`);
     console.log(persistent ? '[store] Postgres persistence enabled (DATABASE_URL)' : '[store] in-memory store — accounts and characters are NOT persisted (set DATABASE_URL for Postgres)');
-  });
+  };
+  if (srv.httpServer.listening) announce();
+  else srv.httpServer.on('listening', announce);
   const shutdown = () => srv.close().then(() => process.exit(0));
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
