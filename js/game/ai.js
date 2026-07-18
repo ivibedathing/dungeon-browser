@@ -69,6 +69,22 @@
       return;
     }
 
+    // Per-type behavior. Everything above is shared upkeep every monster needs
+    // (timers, knockback, stun, aggro, idle wander); everything below is how this
+    // particular monster fights. A monster with no `behavior` — which is every
+    // regular monster in the game — takes the melee path unchanged.
+    const ctx = { p, stats, dist, mr, flow, flowDist, mtx, mty };
+    const behave = (m.behavior && G.BEHAVIORS[m.behavior]) || G.BEHAVIORS.melee;
+    behave(state, m, dt, ctx);
+  };
+
+  G.BEHAVIORS = {};
+
+  // The original chase-and-melee, extracted verbatim so there is exactly one
+  // chase implementation rather than a copy that drifts from it.
+  G.BEHAVIORS.melee = function melee(state, m, dt, ctx) {
+    const { p, stats, dist, mr, flow, flowDist, mtx, mty } = ctx;
+
     // Attack if in range.
     const range = m.attackRange + PLAYER_R;
     if (dist <= range) {
@@ -91,6 +107,14 @@
       return;
     }
 
+    G.chaseStep(state, m, dt, ctx);
+  };
+
+  // The shared approach step: descend the BFS flow field toward the target,
+  // steering straight once adjacent, with boid separation so packs don't stack.
+  // Every behavior that needs to close distance goes through this one copy.
+  G.chaseStep = function chaseStep(state, m, dt, ctx, speedMult) {
+    const { p, dist, mr, flow, flowDist, mtx, mty } = ctx;
     // Chase: descend the BFS flow field; steer straight when adjacent-tile close.
     let targetX = null;
     let targetY = null;
@@ -137,7 +161,7 @@
       }
     }
     const alen = Math.hypot(ax, ay) || 1;
-    const v = (m.speed * Entities.statusMoveMult(m) * dt) / alen;
+    const v = (m.speed * Entities.statusMoveMult(m) * (speedMult === undefined ? 1 : speedMult) * dt) / alen;
     const moved = G.moveCircle(state.dungeon.grid, m.x, m.y, mr, ax * v, ay * v);
     m.x = moved.x;
     m.y = moved.y;

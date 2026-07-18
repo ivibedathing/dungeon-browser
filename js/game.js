@@ -9,6 +9,7 @@ if (typeof window === 'undefined') {
   require('./game/status.js');
   require('./game/combat.js');
   require('./game/ai.js');
+  require('./game/behaviors.js');
   require('./game/inventory.js');
   require('./game/town.js');
   require('./game/update.js');

@@ -7,7 +7,7 @@
   const Balance = typeof window !== 'undefined' ? window.Balance : require('../balance.js');
   const Game = typeof window !== 'undefined' ? window.Game : require('./core.js');
   const G = Game._;
-  const { DROPS } = G;
+  const { DROPS, PLAYER_R } = G;
 
   // ---- Loot ----
 
@@ -233,7 +233,30 @@
           else G.burst(state, pr.x, pr.y, '#9a9a9a', 4, 60);
           break;
         }
-        for (const m of state.monsters) {
+        // Hostile shots (monster casters) look for heroes; everything else is
+        // hero-fired and looks for monsters. Same sweep, opposite target list.
+        if (pr.hostile) {
+          for (const pl of state.players) {
+            if (pl.dead || pl.down) continue;
+            const reach = PLAYER_R + 4;
+            if (U.dist2(pr.x, pr.y, pl.x, pl.y) >= reach * reach) continue;
+            dead = true;
+            if (pl.dodgeT > 0) {
+              G.floatText(state, pl.x, pl.y - 24, 'dodged!', '#c9c2b2', 13);
+            } else {
+              const dmg = Entities.damageAfterDefense(pr.dmg, Entities.effectiveStats(pl).defense);
+              pl.hp -= dmg;
+              pl.hurtT = 0.3;
+              state.shake = Math.min(8, state.shake + 2);
+              G.floatText(state, pl.x, pl.y - 24, `-${dmg}`, '#ff5c4d', 15);
+              G.burst(state, pl.x, pl.y, '#c03a2b', 6, 100);
+              G.sfx(state, 'hurt');
+            }
+            break;
+          }
+          if (dead) break;
+        }
+        for (const m of pr.hostile ? [] : state.monsters) {
           const reach = m.size + 4;
           if (U.dist2(pr.x, pr.y, m.x, m.y) < reach * reach) {
             dead = true;
