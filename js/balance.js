@@ -27,6 +27,17 @@
     bat: { hp: 15, dmg: 5, speed: 108, xp: 9, minFloor: 1, weight: 22, size: 9, color: '#9a7ab8', aggro: 345, attackRange: 24, attackCd: 0.7 },
     brute: { hp: 68, dmg: 15, speed: 48, xp: 26, minFloor: 1, weight: 12, size: 16, color: '#b5624d', aggro: 255, attackRange: 34, attackCd: 1.4 },
     wraith: { hp: 24, dmg: 11, speed: 95, xp: 20, minFloor: 3, weight: 18, size: 12, color: '#8fd0e8', aggro: 370, attackRange: 28, attackCd: 0.8 },
+    // ---- Melee variants (Phase 3): all reuse the chase-and-lunge AI ----
+    // Ghoul: a tankier, meaner zombie that shows up a floor or two down.
+    ghoul: { hp: 56, dmg: 11, speed: 62, xp: 21, minFloor: 2, weight: 16, size: 14, color: '#6f8f74', aggro: 275, attackRange: 30, attackCd: 1.2 },
+    // Hound: fast quadruped that hunts in loose packs and snaps quickly.
+    hound: { hp: 22, dmg: 8, speed: 132, xp: 13, minFloor: 2, weight: 18, size: 10, color: '#9a6b48', aggro: 340, attackRange: 26, attackCd: 0.8 },
+    // Spider: skittering ambusher — low HP, fast, quick bite.
+    spider: { hp: 17, dmg: 7, speed: 118, xp: 11, minFloor: 3, weight: 15, size: 9, color: '#5a4a6a', aggro: 330, attackRange: 24, attackCd: 0.7 },
+    // Armored skeleton: a slow, heavily-plated line-holder with real HP.
+    skeleton_knight: { hp: 64, dmg: 13, speed: 54, xp: 26, minFloor: 4, weight: 12, size: 13, color: '#b8c2cf', aggro: 260, attackRange: 32, attackCd: 1.3 },
+    // Ogre: a bigger, deadlier brute for the deeper floors.
+    ogre: { hp: 118, dmg: 23, speed: 44, xp: 42, minFloor: 5, weight: 8, size: 20, color: '#8a7a4d', aggro: 250, attackRange: 38, attackCd: 1.6 },
     // Swarmling: never in the random pool (weight 0) — only ambush swarms spawn it.
     // Frail and cheap, but faster than anything else and hits quick, so a pack
     // that reaches you drains HP in a hurry. Huge aggro: it commits on sight.

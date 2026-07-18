@@ -91,8 +91,57 @@
       ctx.quadraticCurveTo(x, by + s * 0.5, x - s * 0.45 + wob, by + s * 1.05);
       ctx.quadraticCurveTo(x - s * 0.9, by + s * 0.6, x - s * 0.75, by - s * 0.25);
       ctx.fill();
+    } else if (m.type === 'hound') {
+      // Low quadruped: four trotting legs, elongated body, snouted head.
+      const gait = Math.sin(t * 12 + m.x * 0.3) * s * 0.28;
+      ctx.strokeStyle = R.shade(m.color, 0.55);
+      ctx.lineWidth = 2.4;
+      const legs = [[-0.55, gait], [-0.2, -gait], [0.3, gait], [0.65, -gait]];
+      for (const [lx, ph] of legs) {
+        ctx.beginPath();
+        ctx.moveTo(x + lx * s, by);
+        ctx.lineTo(x + lx * s + ph, by + s * 0.7);
+        ctx.stroke();
+      }
+      ctx.fillStyle = m.color;
+      ctx.beginPath();
+      ctx.ellipse(x, by - s * 0.05, s * 1.05, s * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath(); // head forward-right
+      ctx.arc(x + s * 0.95, by - s * 0.25, s * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = R.shade(m.color, 0.8);
+      ctx.fillRect(x + s * 1.2, by - s * 0.35, s * 0.6, s * 0.35); // snout
+      ctx.beginPath(); // pointed ear
+      ctx.moveTo(x + s * 0.8, by - s * 0.6);
+      ctx.lineTo(x + s * 0.7, by - s * 1.0);
+      ctx.lineTo(x + s * 1.05, by - s * 0.65);
+      ctx.fill();
+    } else if (m.type === 'spider') {
+      // Round abdomen + small head, eight bent legs skittering.
+      const twitch = Math.sin(t * 20 + m.x * 0.5);
+      ctx.strokeStyle = R.shade(m.color, 0.7);
+      ctx.lineWidth = 1.5;
+      for (const side of [-1, 1]) {
+        for (let i = 0; i < 4; i++) {
+          const ay = by - s * 0.3 + i * s * 0.28;
+          const kick = twitch * (i % 2 ? 1 : -1) * s * 0.2;
+          ctx.beginPath();
+          ctx.moveTo(x, ay);
+          ctx.lineTo(x + side * s * 0.9, ay - s * 0.15 + kick);
+          ctx.lineTo(x + side * s * 1.3, ay + s * 0.25 + kick);
+          ctx.stroke();
+        }
+      }
+      ctx.fillStyle = m.color;
+      ctx.beginPath();
+      ctx.ellipse(x, by + s * 0.15, s * 0.7, s * 0.6, 0, 0, Math.PI * 2); // abdomen
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x, by - s * 0.5, s * 0.38, 0, Math.PI * 2); // head
+      ctx.fill();
     } else {
-      // Grounded humanoids: zombie / skeleton / brute.
+      // Grounded humanoids: zombie / skeleton / brute / ghoul / skeleton_knight / ogre.
       ctx.fillStyle = R.shade(m.color, 0.8);
       ctx.beginPath();
       ctx.ellipse(x, by + s * 0.15, s * 0.8, s * 0.66, 0, 0, Math.PI * 2);
@@ -127,12 +176,56 @@
           ctx.stroke();
         }
       }
-      if (m.type === 'zombie') {
-        // Reaching stub arms.
+      if (m.type === 'zombie' || m.type === 'ghoul') {
+        // Reaching stub arms (longer and lankier on the ghoul).
         ctx.fillStyle = R.shade(m.color, 0.9);
         const armSwing = Math.sin(t * 6 + m.y) * 2;
-        ctx.fillRect(x - s * 0.95, by - s * 0.2 + armSwing, s * 0.5, s * 0.28);
-        ctx.fillRect(x + s * 0.45, by - s * 0.2 - armSwing, s * 0.5, s * 0.28);
+        const armLen = m.type === 'ghoul' ? 0.62 : 0.5;
+        ctx.fillRect(x - s * (0.45 + armLen), by - s * 0.2 + armSwing, s * armLen, s * 0.26);
+        ctx.fillRect(x + s * 0.45, by - s * 0.2 - armSwing, s * armLen, s * 0.26);
+      }
+      if (m.type === 'ghoul') {
+        // Sunken pale brow ridge.
+        ctx.fillStyle = R.shade(m.color, 1.3);
+        ctx.beginPath();
+        ctx.arc(x, by - s * 0.5, s * 0.3, Math.PI, 0);
+        ctx.fill();
+      }
+      if (m.type === 'skeleton_knight') {
+        // Ribs plus a plated helm and pauldrons.
+        ctx.strokeStyle = 'rgba(60,60,70,0.8)';
+        ctx.lineWidth = 1.5;
+        for (let i = 0; i < 3; i++) {
+          ctx.beginPath();
+          ctx.moveTo(x - s * 0.4, by - s * 0.05 + i * 4);
+          ctx.lineTo(x + s * 0.4, by - s * 0.05 + i * 4);
+          ctx.stroke();
+        }
+        ctx.fillStyle = R.shade(m.color, 1.1);
+        ctx.beginPath(); // helm
+        ctx.arc(x, by - s * 0.42, s * 0.6, Math.PI * 0.95, Math.PI * 2.05);
+        ctx.fill();
+        ctx.fillRect(x - s * 0.08, by - s * 0.5, s * 0.16, s * 0.4); // noseguard
+        ctx.beginPath(); // pauldrons
+        ctx.arc(x - s * 0.75, by - s * 0.1, s * 0.28, 0, Math.PI * 2);
+        ctx.arc(x + s * 0.75, by - s * 0.1, s * 0.28, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (m.type === 'ogre') {
+        // Heavy belly and a pair of jutting tusks.
+        ctx.fillStyle = R.shade(m.color, 0.7);
+        ctx.beginPath();
+        ctx.ellipse(x, by + s * 0.35, s * 0.7, s * 0.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#e8e0d0';
+        ctx.beginPath();
+        ctx.moveTo(x - s * 0.22, by - s * 0.22);
+        ctx.lineTo(x - s * 0.3, by - s * 0.55);
+        ctx.lineTo(x - s * 0.1, by - s * 0.28);
+        ctx.moveTo(x + s * 0.22, by - s * 0.22);
+        ctx.lineTo(x + s * 0.3, by - s * 0.55);
+        ctx.lineTo(x + s * 0.1, by - s * 0.28);
+        ctx.fill();
       }
     }
 

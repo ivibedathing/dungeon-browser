@@ -49,7 +49,8 @@ test('gainXP can cross multiple levels at once', () => {
 });
 
 test('monster stats scale monotonically with floor depth', () => {
-  for (const type of ['zombie', 'skeleton', 'bat', 'brute', 'wraith']) {
+  // Every archetype in the table — new types are covered automatically.
+  for (const type of Object.keys(E.MONSTER_TYPES)) {
     let prev = null;
     for (let floor = 1; floor <= 12; floor++) {
       const m = E.makeMonster(type, floor, false);
@@ -89,6 +90,33 @@ test('wraiths only appear in the spawn pool from floor 3', () => {
     if (E.pickMonsterType(rng5, 5) === 'wraith') sawWraith = true;
   }
   assert.ok(sawWraith, 'wraith should appear on floor 5 within 400 rolls');
+});
+
+test('pickMonsterType honors minFloor and reaches every weighted type at depth', () => {
+  // No weighted type ever rolls below its minFloor.
+  for (let floor = 1; floor <= 12; floor++) {
+    const rng = U.mulberry32(100 + floor);
+    for (let i = 0; i < 500; i++) {
+      const t = E.pickMonsterType(rng, floor);
+      assert.ok(E.MONSTER_TYPES[t].minFloor <= floor, `${t} rolled below its minFloor on ${floor}`);
+      assert.ok(E.MONSTER_TYPES[t].weight > 0, `${t} has zero weight but rolled`);
+    }
+  }
+  // Every weighted type is reachable at a deep floor within a generous sample.
+  const seen = new Set();
+  const rng = U.mulberry32(7);
+  for (let i = 0; i < 8000; i++) seen.add(E.pickMonsterType(rng, 12));
+  for (const [type, t] of Object.entries(E.MONSTER_TYPES)) {
+    if (t.weight > 0) assert.ok(seen.has(type), `${type} never appeared at floor 12`);
+  }
+});
+
+test('the new melee variants exist with sane combat stats', () => {
+  for (const type of ['ghoul', 'hound', 'spider', 'skeleton_knight', 'ogre']) {
+    const m = E.makeMonster(type, 5, false);
+    assert.ok(m.hp > 0 && m.dmg > 0 && m.speed > 0 && m.size > 0, `${type} stats`);
+    assert.ok(m.attackRange > 0 && m.attackCd > 0, `${type} attack params`);
+  }
 });
 
 test('damageAfterDefense subtracts defense with a floor of 1', () => {
