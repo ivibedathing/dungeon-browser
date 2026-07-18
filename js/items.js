@@ -27,58 +27,111 @@
 
   // arc in radians (total swing width), kb = knockback impulse; ranged bases fire projectiles.
   // minFloor gates better bases to deeper floors (normal/exceptional/elite tiering).
+  // `family` is the VISUAL archetype (icon + held sprite), decoupled from `kind` (the
+  // combat behavior). Many families share one `kind` — every melee weapon is kind 'melee'
+  // and differs only by stats and family; ranged kinds each fire a projectile variant.
   const WEAPON_BASES = [
-    { base: 'Short Sword', kind: 'melee', dmg: [6, 9], radius: [72, 82], speed: [2.2, 2.6], arc: 2.97, kb: 130 },
-    { base: 'Falchion', kind: 'melee', dmg: [8, 11], radius: [70, 80], speed: [2.0, 2.3], arc: 3.14, kb: 140, minFloor: 2 },
-    { base: 'Broad Sword', kind: 'melee', dmg: [9, 13], radius: [74, 84], speed: [1.9, 2.2], arc: 2.97, kb: 140, minFloor: 3 },
-    { base: 'Estoc', kind: 'melee', dmg: [6, 9], radius: [86, 96], speed: [2.6, 3.0], arc: 2.27, kb: 100, minFloor: 4 },
-    { base: 'Claymore', kind: 'melee', dmg: [14, 19], radius: [80, 92], speed: [1.4, 1.7], arc: 3.84, kb: 190, minFloor: 6 },
-    { base: 'Runeblade', kind: 'melee', dmg: [12, 16], radius: [76, 86], speed: [2.2, 2.5], arc: 2.97, kb: 150, minFloor: 8 },
-    { base: 'Battle Axe', kind: 'melee', dmg: [10, 14], radius: [68, 78], speed: [1.6, 1.9], arc: 3.58, kb: 150 },
-    { base: 'Iron Mace', kind: 'melee', dmg: [8, 12], radius: [64, 74], speed: [1.9, 2.2], arc: 2.62, kb: 250 },
-    { base: 'Spear', kind: 'melee', dmg: [7, 10], radius: [88, 102], speed: [1.8, 2.1], arc: 2.09, kb: 110 },
-    { base: 'Hunting Bow', kind: 'bow', dmg: [5, 8], speed: [1.7, 2.1], projSpeed: [400, 460] },
-    { base: 'Ember Wand', kind: 'wand', dmg: [6, 10], speed: [1.3, 1.6], projSpeed: [280, 330], aoe: [50, 62] },
+    // ---- Swords (family: sword) ----
+    { base: 'Short Sword', family: 'sword', kind: 'melee', dmg: [6, 9], radius: [72, 82], speed: [2.2, 2.6], arc: 2.97, kb: 130 },
+    { base: 'Scimitar', family: 'sword', kind: 'melee', dmg: [8, 11], radius: [72, 82], speed: [2.3, 2.6], arc: 3.05, kb: 130, minFloor: 2 },
+    { base: 'Falchion', family: 'sword', kind: 'melee', dmg: [8, 11], radius: [70, 80], speed: [2.0, 2.3], arc: 3.14, kb: 140, minFloor: 2 },
+    { base: 'Broad Sword', family: 'sword', kind: 'melee', dmg: [9, 13], radius: [74, 84], speed: [1.9, 2.2], arc: 2.97, kb: 140, minFloor: 3 },
+    { base: 'Estoc', family: 'sword', kind: 'melee', dmg: [6, 9], radius: [86, 96], speed: [2.6, 3.0], arc: 2.27, kb: 100, minFloor: 4 },
+    { base: 'Katana', family: 'sword', kind: 'melee', dmg: [12, 16], radius: [82, 92], speed: [2.2, 2.5], arc: 2.8, kb: 130, minFloor: 6 },
+    { base: 'Runeblade', family: 'sword', kind: 'melee', dmg: [12, 16], radius: [76, 86], speed: [2.2, 2.5], arc: 2.97, kb: 150, minFloor: 8 },
+    // ---- Greatswords (family: greatsword) ----
+    { base: 'Claymore', family: 'greatsword', kind: 'melee', dmg: [14, 19], radius: [80, 92], speed: [1.4, 1.7], arc: 3.84, kb: 190, minFloor: 6 },
+    // ---- Daggers (family: dagger) — fast, short reach ----
+    { base: 'Dagger', family: 'dagger', kind: 'melee', dmg: [4, 6], radius: [58, 66], speed: [2.8, 3.2], arc: 2.44, kb: 80 },
+    { base: 'Dirk', family: 'dagger', kind: 'melee', dmg: [6, 9], radius: [60, 68], speed: [2.7, 3.1], arc: 2.44, kb: 90, minFloor: 4 },
+    // ---- Axes (family: axe) ----
+    { base: 'Battle Axe', family: 'axe', kind: 'melee', dmg: [10, 14], radius: [68, 78], speed: [1.6, 1.9], arc: 3.58, kb: 150 },
+    { base: 'Great Axe', family: 'axe', kind: 'melee', dmg: [16, 21], radius: [78, 88], speed: [1.3, 1.6], arc: 3.72, kb: 200, minFloor: 5 },
+    // ---- Maces & hammers (family: mace) — heavy knockback ----
+    { base: 'Iron Mace', family: 'mace', kind: 'melee', dmg: [8, 12], radius: [64, 74], speed: [1.9, 2.2], arc: 2.62, kb: 250 },
+    { base: 'War Hammer', family: 'mace', kind: 'melee', dmg: [15, 20], radius: [66, 76], speed: [1.3, 1.6], arc: 2.79, kb: 300, minFloor: 5 },
+    // ---- Flails (family: flail) ----
+    { base: 'Flail', family: 'flail', kind: 'melee', dmg: [9, 13], radius: [66, 76], speed: [1.8, 2.1], arc: 2.71, kb: 220, minFloor: 2 },
+    { base: 'Morning Star', family: 'flail', kind: 'melee', dmg: [11, 15], radius: [70, 80], speed: [1.7, 2.0], arc: 2.88, kb: 240, minFloor: 4 },
+    // ---- Polearms (family: spear) — long reach, narrow arc ----
+    { base: 'Spear', family: 'spear', kind: 'melee', dmg: [7, 10], radius: [88, 102], speed: [1.8, 2.1], arc: 2.09, kb: 110 },
+    { base: 'Halberd', family: 'spear', kind: 'melee', dmg: [12, 16], radius: [92, 104], speed: [1.6, 1.9], arc: 2.44, kb: 150, minFloor: 5 },
+    { base: 'Glaive', family: 'spear', kind: 'melee', dmg: [13, 17], radius: [90, 100], speed: [1.7, 2.0], arc: 2.62, kb: 140, minFloor: 7 },
+    // ---- Bows (family: bow) ----
+    { base: 'Hunting Bow', family: 'bow', kind: 'bow', dmg: [5, 8], speed: [1.7, 2.1], projSpeed: [400, 460] },
+    { base: 'War Bow', family: 'bow', kind: 'bow', dmg: [8, 12], speed: [1.5, 1.9], projSpeed: [440, 500], minFloor: 5 },
+    // ---- Crossbows (family: crossbow) — slow, hard-hitting bolts ----
+    { base: 'Crossbow', family: 'crossbow', kind: 'crossbow', dmg: [9, 13], speed: [1.2, 1.5], projSpeed: [520, 600], minFloor: 3 },
+    { base: 'Arbalest', family: 'crossbow', kind: 'crossbow', dmg: [13, 18], speed: [1.0, 1.3], projSpeed: [560, 640], minFloor: 7 },
+    // ---- Wands (family: wand) — quick small blasts ----
+    { base: 'Ember Wand', family: 'wand', kind: 'wand', dmg: [6, 10], speed: [1.3, 1.6], projSpeed: [280, 330], aoe: [50, 62] },
+    // ---- Staves (family: staff) — slow, big blasts ----
+    { base: "Sorcerer's Staff", family: 'staff', kind: 'staff', dmg: [9, 14], speed: [1.1, 1.4], projSpeed: [300, 350], aoe: [64, 80], minFloor: 4 },
+    // ---- Thrown (family: thrown) — spinning weapons, no splash ----
+    { base: 'Throwing Axe', family: 'thrown', kind: 'thrown', dmg: [7, 10], speed: [2.0, 2.4], projSpeed: [380, 440], minFloor: 2 },
+    { base: 'Javelin', family: 'thrown', kind: 'thrown', dmg: [9, 13], speed: [1.8, 2.1], projSpeed: [420, 480], minFloor: 4 },
   ];
   // tone = weight-class color painted onto the sprite and icons (leather/mail/plate/bone).
+  // motif = icon silhouette variant (robe/mail/scale/plate for bodies; cap/helm/visor/
+  // crown for heads). Absent motif falls back to a generic per-slot draw.
   const ARMOR_BASES = [
-    { base: 'Quilted Armor', def: [1, 2], hp: [0, 6], tone: '#8a6f4d' },
-    { base: 'Leather Armor', def: [1, 2], hp: [0, 8], tone: '#8a6f4d' },
-    { base: 'Chain Mail', def: [2, 4], hp: [4, 12], tone: '#8a94a2', minFloor: 2 },
-    { base: 'Scale Mail', def: [3, 5], hp: [6, 14], tone: '#8a94a2', minFloor: 4 },
-    { base: 'Gothic Plate', def: [4, 6], hp: [8, 18], mv: [-0.04, -0.02], tone: '#b8c2cf', minFloor: 5 },
-    { base: 'Full Plate', def: [6, 9], hp: [12, 22], mv: [-0.05, -0.03], tone: '#b8c2cf', minFloor: 7 },
+    { base: 'Quilted Armor', motif: 'robe', def: [1, 2], hp: [0, 6], tone: '#8a6f4d' },
+    { base: 'Leather Armor', motif: 'robe', def: [1, 2], hp: [0, 8], tone: '#8a6f4d' },
+    { base: 'Ring Mail', motif: 'mail', def: [2, 3], hp: [3, 10], tone: '#8a94a2', minFloor: 2 },
+    { base: 'Chain Mail', motif: 'mail', def: [2, 4], hp: [4, 12], tone: '#8a94a2', minFloor: 2 },
+    { base: 'Brigandine', motif: 'scale', def: [3, 4], hp: [5, 12], tone: '#8a6f4d', minFloor: 3 },
+    { base: 'Scale Mail', motif: 'scale', def: [3, 5], hp: [6, 14], tone: '#8a94a2', minFloor: 4 },
+    { base: 'Cuirass', motif: 'plate', def: [4, 6], hp: [7, 16], tone: '#b8c2cf', minFloor: 5 },
+    { base: 'Gothic Plate', motif: 'plate', def: [4, 6], hp: [8, 18], mv: [-0.04, -0.02], tone: '#b8c2cf', minFloor: 5 },
+    { base: 'Full Plate', motif: 'plate', def: [6, 9], hp: [12, 22], mv: [-0.05, -0.03], tone: '#b8c2cf', minFloor: 7 },
+    { base: 'Dragonscale', motif: 'scale', def: [7, 10], hp: [14, 26], mana: [4, 10], tone: '#5f8f6a', minFloor: 8 },
   ];
   const HELMET_BASES = [
-    { base: 'Leather Cap', def: [1, 2], hp: [0, 5], tone: '#8a6f4d' },
-    { base: 'Skull Cap', def: [1, 3], hp: [2, 6], tone: '#8a94a2' },
-    { base: 'Full Helm', def: [2, 3], hp: [3, 8], tone: '#8a94a2', minFloor: 3 },
-    { base: 'Bone Visage', def: [2, 4], hp: [3, 8], mana: [4, 10], tone: '#d8d2c2', minFloor: 4 },
-    { base: 'Great Helm', def: [3, 5], hp: [6, 12], tone: '#b8c2cf', minFloor: 5 },
-    { base: 'Horned Crown', def: [3, 5], hp: [8, 14], mana: [4, 8], tone: '#c9a15a', minFloor: 6 },
+    { base: 'Leather Cap', motif: 'cap', def: [1, 2], hp: [0, 5], tone: '#8a6f4d' },
+    { base: 'Skull Cap', motif: 'cap', def: [1, 3], hp: [2, 6], tone: '#8a94a2' },
+    { base: 'Iron Helm', motif: 'helm', def: [2, 3], hp: [3, 7], tone: '#8a94a2', minFloor: 2 },
+    { base: 'Full Helm', motif: 'helm', def: [2, 3], hp: [3, 8], tone: '#8a94a2', minFloor: 3 },
+    { base: 'Bone Visage', motif: 'visor', def: [2, 4], hp: [3, 8], mana: [4, 10], tone: '#d8d2c2', minFloor: 4 },
+    { base: 'Great Helm', motif: 'helm', def: [3, 5], hp: [6, 12], tone: '#b8c2cf', minFloor: 5 },
+    { base: 'Winged Helm', motif: 'visor', def: [3, 5], hp: [6, 12], mv: [0.01, 0.03], tone: '#b8c2cf', minFloor: 6 },
+    { base: 'Horned Crown', motif: 'crown', def: [3, 5], hp: [8, 14], mana: [4, 8], tone: '#c9a15a', minFloor: 6 },
   ];
   const GLOVE_BASES = [
     { base: 'Hide Mitts', def: [1, 2], spd: [0.03, 0.07], tone: '#8a6f4d' },
     { base: 'Leather Gloves', def: [1, 2], spd: [0.04, 0.08], tone: '#8a6f4d' },
     { base: 'Chain Gauntlets', def: [2, 3], spd: [0.03, 0.06], tone: '#8a94a2', minFloor: 2 },
+    { base: 'Silk Gloves', def: [1, 2], spd: [0.06, 0.10], tone: '#7a5f8a', minFloor: 3 },
     { base: 'Duelist Gloves', def: [1, 2], spd: [0.07, 0.11], tone: '#5a5568', minFloor: 4 },
     { base: 'War Gauntlets', def: [3, 5], spd: [0.02, 0.05], tone: '#b8c2cf', minFloor: 6 },
+    { base: 'Ogre Gauntlets', def: [4, 6], spd: [0.02, 0.04], tone: '#5f8f6a', minFloor: 7 },
   ];
   const PANTS_BASES = [
     { base: 'Quilted Trousers', def: [1, 2], hp: [2, 6], tone: '#8a6f4d' },
     { base: 'Leather Greaves', def: [1, 3], tone: '#8a6f4d' },
     { base: 'Mail Leggings', def: [2, 4], tone: '#8a94a2', minFloor: 2 },
+    { base: 'Scale Leggings', def: [3, 5], hp: [2, 6], tone: '#8a94a2', minFloor: 4 },
     { base: 'Shadow Breeches', def: [1, 3], mv: [0.02, 0.04], tone: '#5a5568', minFloor: 4 },
     { base: 'Plated Cuisses', def: [3, 6], mv: [-0.03, -0.02], tone: '#b8c2cf', minFloor: 5 },
+    { base: 'Dragonhide Chausses', def: [4, 7], hp: [4, 10], tone: '#5f8f6a', minFloor: 8 },
   ];
   const BOOTS_BASES = [
     { base: 'Rough Boots', def: [1, 1], mv: [0.03, 0.06], tone: '#8a6f4d' },
     { base: 'Worn Boots', def: [1, 2], mv: [0.03, 0.07], tone: '#8a6f4d' },
+    { base: "Traveler's Boots", def: [1, 2], mv: [0.05, 0.09], tone: '#8a6f4d', minFloor: 2 },
     { base: 'Chain Boots', def: [2, 3], mv: [0.02, 0.05], tone: '#8a94a2', minFloor: 2 },
     { base: 'Swift Striders', def: [1, 2], mv: [0.07, 0.11], tone: '#5a5568', minFloor: 4 },
     { base: 'Greaved Sabatons', def: [3, 4], mv: [0.02, 0.04], tone: '#b8c2cf', minFloor: 6 },
+    { base: 'Winged Boots', def: [2, 3], mv: [0.09, 0.13], tone: '#c9a15a', minFloor: 7 },
   ];
-  const RING_BASES = [{ base: 'Bone Ring' }, { base: 'Iron Loop' }, { base: 'Occult Band' }];
+  // gem = the icon's setting colour.
+  const RING_BASES = [
+    { base: 'Bone Ring', gem: '#e8e2d6' },
+    { base: 'Iron Loop', gem: '#9adfff' },
+    { base: 'Occult Band', gem: '#c86bff' },
+    { base: 'Gold Signet', gem: '#ffd84d' },
+    { base: 'Jade Circle', gem: '#5fd08a' },
+    { base: 'Ruby Band', gem: '#ff5c5c' },
+  ];
 
   // The worn-slot taxonomy, declared once and derived outward: armour is the set
   // that rolls defense, Borin works metal (armour + weapon, never the ring), and
@@ -124,6 +177,22 @@
     moveMult: {
       roll: (rng) => Math.round((0.04 + rng() * 0.1) * 100) / 100,
       label: (v) => `+${Math.round(v * 100)}% Move Speed`,
+    },
+    critChance: {
+      roll: (rng) => Math.round((0.03 + rng() * 0.05) * 100) / 100,
+      label: (v) => `+${Math.round(v * 100)}% Critical Strike`,
+    },
+    thorns: {
+      roll: (rng, f) => Math.max(1, Math.round(1 + rng() * 2 + f * 0.5)),
+      label: (v) => `Reflect ${v} Damage (Thorns)`,
+    },
+    lifeRegen: {
+      roll: (rng, f) => Math.round((0.5 + rng() + f * 0.2) * 10) / 10,
+      label: (v) => `+${v.toFixed(1)} Life Regeneration`,
+    },
+    manaPerKill: {
+      roll: (rng, f) => Math.max(1, Math.round(1 + rng() * 2 + f * 0.3)),
+      label: (v) => `+${v} Mana per Kill`,
     },
   };
 
@@ -233,6 +302,9 @@
       affixes,
     };
     if (kind) item.kind = kind;
+    if (baseDef.family) item.family = baseDef.family;
+    if (baseDef.motif) item.motif = baseDef.motif;
+    if (baseDef.gem) item.gem = baseDef.gem;
     if (baseDef.tone) item.tone = baseDef.tone;
     return item;
   };
@@ -279,6 +351,10 @@
       maxMana: 0,
       defense: 0,
       lifePerKill: 0,
+      manaPerKill: 0,
+      critChance: 0,
+      thorns: 0,
+      lifeRegen: 0,
     };
     let baseSpeed = w ? w.stats.speed : UNARMED.speed;
     let speedAdd = 0;
@@ -301,6 +377,10 @@
         else if (a.key === 'maxMana') s.maxMana += a.val;
         else if (a.key === 'defense') s.defense += a.val;
         else if (a.key === 'lifePerKill') s.lifePerKill += a.val;
+        else if (a.key === 'manaPerKill') s.manaPerKill += a.val;
+        else if (a.key === 'critChance') s.critChance += a.val;
+        else if (a.key === 'thorns') s.thorns += a.val;
+        else if (a.key === 'lifeRegen') s.lifeRegen += a.val;
         else if (a.key === 'speedMult') speedAdd += a.val;
         else if (a.key === 'xpMult') xpAdd += a.val;
         else if (a.key === 'moveMult') moveAdd += a.val;

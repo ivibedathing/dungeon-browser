@@ -47,33 +47,57 @@ function placeMonster(state, dx, dy) {
   return m;
 }
 
-test('weapon kinds: melee has arc/radius/knockback, bow and wand are ranged', () => {
+// Every weapon kind, split by the combat traits its category must carry.
+const MELEE_KINDS = ['melee'];
+const RANGED_KINDS = ['bow', 'crossbow', 'wand', 'staff', 'thrown'];
+const AOE_KINDS = ['wand', 'staff']; // ranged kinds whose projectile explodes
+const ALL_KINDS = [...MELEE_KINDS, ...RANGED_KINDS];
+
+test('weapon kinds: melee carries arc/radius/kb; ranged kinds fire projectiles', () => {
   const rng = U.mulberry32(21);
-  const seen = new Set();
-  for (let i = 0; i < 400; i++) {
-    const w = Items.makeItem(2, rng, { slot: 'weapon' });
-    assert.ok(['melee', 'bow', 'wand'].includes(w.kind), `kind ${w.kind}`);
-    seen.add(w.kind);
-    if (w.kind === 'melee') {
-      assert.ok(w.stats.radius >= 60, 'melee has swing radius');
+  const seenKinds = new Set();
+  const seenFamilies = new Set();
+  // Deep floor so every minFloor-gated base is eligible and all kinds can appear.
+  for (let i = 0; i < 4000; i++) {
+    const w = Items.makeItem(9, rng, { slot: 'weapon' });
+    assert.ok(ALL_KINDS.includes(w.kind), `unexpected kind ${w.kind}`);
+    assert.ok(typeof w.family === 'string' && w.family.length > 0, 'weapon has a family');
+    seenKinds.add(w.kind);
+    seenFamilies.add(w.family);
+    if (MELEE_KINDS.includes(w.kind)) {
+      assert.ok(w.stats.radius >= 55, `melee swing radius ${w.stats.radius}`);
       assert.ok(w.stats.arc > 1.5 && w.stats.arc < 4, `melee arc ${w.stats.arc}`);
       assert.ok(w.stats.kb > 0, 'melee has knockback');
     } else {
       assert.ok(w.stats.projSpeed >= 200, `${w.kind} projSpeed ${w.stats.projSpeed}`);
       assert.equal(w.stats.radius, undefined, 'ranged has no swing radius');
       assert.ok(!(w.affixes || []).some((a) => a.key === 'radius'), 'no radius affix on ranged');
-      if (w.kind === 'wand') assert.ok(w.stats.aoe >= 40, `wand aoe ${w.stats.aoe}`);
+      if (AOE_KINDS.includes(w.kind)) assert.ok(w.stats.aoe >= 40, `${w.kind} aoe ${w.stats.aoe}`);
+      else assert.ok(!w.stats.aoe, `${w.kind} should not have aoe`);
     }
     assert.ok(w.stats.damage > 0 && w.stats.speed > 0);
   }
-  assert.deepEqual([...seen].sort(), ['bow', 'melee', 'wand'], 'all three kinds drop');
+  assert.deepEqual([...seenKinds].sort(), [...ALL_KINDS].sort(), 'every weapon kind drops');
+  // The expansion should surface a broad spread of visual families.
+  assert.ok(seenFamilies.size >= 10, `only ${seenFamilies.size} families seen`);
 });
 
-test('makeItem honors an explicit kind request', () => {
+test('makeItem honors an explicit kind request for every kind', () => {
   const rng = U.mulberry32(5);
-  assert.equal(Items.makeItem(1, rng, { slot: 'weapon', kind: 'bow' }).kind, 'bow');
-  assert.equal(Items.makeItem(1, rng, { slot: 'weapon', kind: 'wand' }).kind, 'wand');
-  assert.equal(Items.makeItem(1, rng, { slot: 'weapon', kind: 'melee' }).kind, 'melee');
+  for (const kind of ALL_KINDS) {
+    // Floor 9 so kinds whose only base is minFloor-gated (e.g. staff/crossbow) exist.
+    const w = Items.makeItem(9, rng, { slot: 'weapon', kind });
+    assert.equal(w.kind, kind, `requested ${kind}`);
+    assert.ok(w.family, `${kind} has a family`);
+  }
+});
+
+test('weapon generation is deterministic for a given seed', () => {
+  const a = Items.makeItem(6, U.mulberry32(1234), { slot: 'weapon' });
+  const b = Items.makeItem(6, U.mulberry32(1234), { slot: 'weapon' });
+  assert.equal(a.base, b.base, 'same seed → same base');
+  assert.equal(a.family, b.family, 'same seed → same family');
+  assert.equal(a.kind, b.kind);
 });
 
 test('a bow fires an arrow that kills a monster down the line', () => {
@@ -105,6 +129,54 @@ test('a wand fireball explodes and hurts the whole pack', () => {
   input.keys.space = true;
   state = run(state, input, 700);
   assert.equal(state.kills, 3, `fireballs cleared the pack (kills=${state.kills})`);
+});
+
+test('a staff hurls an exploding blast like a wand', () => {
+  let state = Game.newRun(42);
+  state.monsters.length = 0;
+  equipWeapon(state, 'staff');
+  placeMonster(state, 120, 0);
+  placeMonster(state, 110, 18);
+  placeMonster(state, 110, -18);
+  state.player.facing = 0;
+  const input = freshInput();
+  input.keys.space = true;
+  state = Game.update(state, input, 1 / 60);
+  assert.equal(state.projectiles[0].kind, 'fireball', 'staff fires a fireball (AoE)');
+  state = run(state, input, 700);
+  assert.equal(state.kills, 3, `staff blasts cleared the pack (kills=${state.kills})`);
+});
+
+test('a thrown weapon flies as a non-splash projectile and kills', () => {
+  let state = Game.newRun(41);
+  state.monsters.length = 0;
+  equipWeapon(state, 'thrown');
+  const m = placeMonster(state, 150, 0);
+  state.player.facing = 0;
+  const input = freshInput();
+  input.keys.space = true;
+  state = Game.update(state, input, 1 / 60);
+  assert.ok(state.projectiles.length >= 1, 'thrown weapon spawned');
+  assert.equal(state.projectiles[0].kind, 'thrown', 'thrown projectile kind');
+  assert.ok(!state.projectiles[0].aoe, 'thrown has no splash');
+  state = run(state, input, 500);
+  assert.ok(state.kills >= 1, `thrown weapons killed the zombie (kills=${state.kills})`);
+  assert.ok(!state.monsters.includes(m));
+});
+
+test('a crossbow looses a bolt down the line', () => {
+  let state = Game.newRun(41);
+  state.monsters.length = 0;
+  equipWeapon(state, 'crossbow');
+  const m = placeMonster(state, 150, 0);
+  state.player.facing = 0;
+  const input = freshInput();
+  input.keys.space = true;
+  state = Game.update(state, input, 1 / 60);
+  assert.equal(state.projectiles[0].kind, 'arrow', 'crossbow fires an arrow-type bolt');
+  state = run(state, input, 500);
+  assert.ok(state.kills >= 1, `crossbow killed the zombie (kills=${state.kills})`);
+  assert.ok(!state.monsters.includes(m));
 });
 
 test('projectiles vanish when they hit a wall', () => {

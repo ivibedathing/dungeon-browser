@@ -292,6 +292,9 @@ class Room {
           hitT: round3(m.hitT),
           champion: !!m.champion,
           boss: !!m.boss,
+          // Telegraph charge (0..1) for the wind-up cue; the client derives which
+          // cue from `type`, so no behavior tag needs to ride the wire.
+          tel: m.tel ? round2(m.tel) : 0,
         })),
       projectiles: s.projectiles
         .filter((pr) => this.inAOI(me, pr.x, pr.y))

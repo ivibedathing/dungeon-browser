@@ -109,6 +109,132 @@ Bosses (every 2nd floor, brute stock): ×8 HP, ×2 damage, ×10 XP, knockback ×
 | 15 | 153 | 76 | 82 | 398 / 114 |
 | 20 | 213 | 99 | 104 | 554 / 149 |
 
+### ghoul — base 56 hp / 11 dmg / 21 xp · speed 62 · aggro 275px · from floor 2
+
+| floor | hp | dmg | xp | champion hp/dmg |
+| ---: | ---: | ---: | ---: | --- |
+| 1 | 56 | 11 | 21 | 146 / 17 |
+| 2 | 73 | 16 | 26 | 190 / 24 |
+| 4 | 109 | 25 | 35 | 283 / 38 |
+| 6 | 148 | 34 | 44 | 385 / 51 |
+| 8 | 190 | 43 | 53 | 494 / 65 |
+| 10 | 234 | 53 | 63 | 608 / 80 |
+| 12 | 281 | 62 | 72 | 731 / 93 |
+| 15 | 357 | 76 | 86 | 928 / 114 |
+| 20 | 496 | 99 | 109 | 1290 / 149 |
+
+### hound — base 22 hp / 8 dmg / 13 xp · speed 132 · aggro 340px · from floor 2
+
+| floor | hp | dmg | xp | champion hp/dmg |
+| ---: | ---: | ---: | ---: | --- |
+| 1 | 22 | 8 | 13 | 57 / 12 |
+| 2 | 29 | 11 | 16 | 75 / 17 |
+| 4 | 43 | 18 | 22 | 112 / 27 |
+| 6 | 58 | 25 | 27 | 151 / 38 |
+| 8 | 75 | 32 | 33 | 195 / 48 |
+| 10 | 92 | 38 | 39 | 239 / 57 |
+| 12 | 111 | 45 | 44 | 289 / 68 |
+| 15 | 140 | 55 | 53 | 364 / 83 |
+| 20 | 195 | 72 | 67 | 507 / 108 |
+
+### spider — base 17 hp / 7 dmg / 11 xp · speed 118 · aggro 330px · from floor 3
+
+| floor | hp | dmg | xp | champion hp/dmg |
+| ---: | ---: | ---: | ---: | --- |
+| 1 | 17 | 7 | 11 | 44 / 11 |
+| 2 | 22 | 10 | 13 | 57 / 15 |
+| 4 | 33 | 16 | 18 | 86 / 24 |
+| 6 | 45 | 22 | 23 | 117 / 33 |
+| 8 | 58 | 28 | 28 | 151 / 42 |
+| 10 | 71 | 33 | 33 | 185 / 50 |
+| 12 | 85 | 39 | 38 | 221 / 59 |
+| 15 | 108 | 48 | 45 | 281 / 72 |
+| 20 | 151 | 63 | 57 | 393 / 95 |
+
+### skeleton_knight — base 64 hp / 13 dmg / 26 xp · speed 54 · aggro 260px · from floor 4
+
+| floor | hp | dmg | xp | champion hp/dmg |
+| ---: | ---: | ---: | ---: | --- |
+| 1 | 64 | 13 | 26 | 166 / 20 |
+| 2 | 84 | 18 | 32 | 218 / 27 |
+| 4 | 125 | 29 | 43 | 325 / 44 |
+| 6 | 170 | 40 | 55 | 442 / 60 |
+| 8 | 217 | 51 | 66 | 564 / 77 |
+| 10 | 268 | 62 | 77 | 697 / 93 |
+| 12 | 322 | 73 | 89 | 837 / 110 |
+| 15 | 408 | 89 | 106 | 1061 / 134 |
+| 20 | 567 | 117 | 135 | 1474 / 176 |
+
+### ogre — base 118 hp / 23 dmg / 42 xp · speed 44 · aggro 250px · from floor 5
+
+| floor | hp | dmg | xp | champion hp/dmg |
+| ---: | ---: | ---: | ---: | --- |
+| 1 | 118 | 23 | 42 | 307 / 35 |
+| 2 | 154 | 33 | 51 | 400 / 50 |
+| 4 | 231 | 52 | 70 | 601 / 78 |
+| 6 | 313 | 71 | 88 | 814 / 107 |
+| 8 | 400 | 91 | 107 | 1040 / 137 |
+| 10 | 494 | 110 | 125 | 1284 / 165 |
+| 12 | 593 | 129 | 144 | 1542 / 194 |
+| 15 | 752 | 158 | 171 | 1955 / 237 |
+| 20 | 1046 | 207 | 218 | 2720 / 311 |
+
+### cultist — base 26 hp / 10 dmg / 22 xp · speed 70 · aggro 380px · from floor 4 · behavior: ranged
+
+| floor | hp | dmg | xp | champion hp/dmg |
+| ---: | ---: | ---: | ---: | --- |
+| 1 | 26 | 10 | 22 | 68 / 15 |
+| 2 | 34 | 14 | 27 | 88 / 21 |
+| 4 | 51 | 23 | 37 | 133 / 35 |
+| 6 | 69 | 31 | 46 | 179 / 47 |
+| 8 | 88 | 39 | 56 | 229 / 59 |
+| 10 | 109 | 48 | 66 | 283 / 72 |
+| 12 | 131 | 56 | 75 | 341 / 84 |
+| 15 | 166 | 69 | 90 | 432 / 104 |
+| 20 | 231 | 90 | 114 | 601 / 135 |
+
+### bomber — base 30 hp / 24 dmg / 18 xp · speed 92 · aggro 360px · from floor 5 · behavior: exploder
+
+| floor | hp | dmg | xp | champion hp/dmg |
+| ---: | ---: | ---: | ---: | --- |
+| 1 | 30 | 24 | 18 | 78 / 36 |
+| 2 | 39 | 34 | 22 | 101 / 51 |
+| 4 | 59 | 54 | 30 | 153 / 81 |
+| 6 | 80 | 74 | 38 | 208 / 111 |
+| 8 | 102 | 95 | 46 | 265 / 143 |
+| 10 | 126 | 115 | 54 | 328 / 173 |
+| 12 | 151 | 135 | 62 | 393 / 203 |
+| 15 | 191 | 165 | 73 | 497 / 248 |
+| 20 | 266 | 216 | 93 | 692 / 324 |
+
+### gargoyle — base 46 hp / 18 dmg / 26 xp · speed 60 · aggro 340px · from floor 6 · behavior: charger
+
+| floor | hp | dmg | xp | champion hp/dmg |
+| ---: | ---: | ---: | ---: | --- |
+| 1 | 46 | 18 | 26 | 120 / 27 |
+| 2 | 60 | 26 | 32 | 156 / 39 |
+| 4 | 90 | 41 | 43 | 234 / 62 |
+| 6 | 122 | 56 | 55 | 317 / 84 |
+| 8 | 156 | 71 | 66 | 406 / 107 |
+| 10 | 193 | 86 | 77 | 502 / 129 |
+| 12 | 231 | 101 | 89 | 601 / 152 |
+| 15 | 293 | 124 | 106 | 762 / 186 |
+| 20 | 408 | 162 | 135 | 1061 / 243 |
+
+### necromancer — base 40 hp / 8 dmg / 30 xp · speed 66 · aggro 360px · from floor 6 · behavior: summoner
+
+| floor | hp | dmg | xp | champion hp/dmg |
+| ---: | ---: | ---: | ---: | --- |
+| 1 | 40 | 8 | 30 | 104 / 12 |
+| 2 | 52 | 11 | 37 | 135 / 17 |
+| 4 | 78 | 18 | 50 | 203 / 27 |
+| 6 | 106 | 25 | 63 | 276 / 38 |
+| 8 | 136 | 32 | 76 | 354 / 48 |
+| 10 | 167 | 38 | 89 | 434 / 57 |
+| 12 | 201 | 45 | 103 | 523 / 68 |
+| 15 | 255 | 55 | 122 | 663 / 83 |
+| 20 | 355 | 72 | 155 | 923 / 108 |
+
 ### swarmling — base 8 hp / 4 dmg / 4 xp · speed 165 · aggro 1400px · from floor 2
 
 | floor | hp | dmg | xp | champion hp/dmg |
@@ -122,6 +248,15 @@ Bosses (every 2nd floor, brute stock): ×8 HP, ×2 damage, ×10 XP, knockback ×
 | 12 | 40 | 22 | 14 | 104 / 33 |
 | 15 | 51 | 28 | 16 | 133 / 42 |
 | 20 | 71 | 36 | 21 | 185 / 54 |
+
+### Behavior tuning (special archetypes)
+
+Telegraph windows are deliberately generous so every special is dodgeable.
+
+- **ranged** — fireRange: 340 · castTime: 0.45 · boltSpeed: 300 · kiteRange: 150
+- **exploder** — fuseTime: 0.7 · blastRadius: 74 · blastKb: 220
+- **charger** — windupTime: 0.5 · dashTime: 0.26 · dashSpeed: 540 · triggerRange: 240 · minRange: 60
+- **summoner** — castTime: 0.6 · cap: 4 · minionsPerCast: 2 · minionType: skeleton · kiteRange: 170
 
 ### Boss (Floor Guardian) per boss floor
 
@@ -190,18 +325,10 @@ Champion/boss drops re-roll with common excluded.
 
 ## Blacksmith upgrades
 
-Borin hones every worn slot but the ring: weapons gain +8% damage per level, armour
-(helmet, armor, gloves, pants, boots) gains +8% defense per level. Max +10 either way.
-Honing scales that one stat only — a piece's Life/Mana/attack-speed/move rolls and its
-affixes are untouched, so upgrades can't compound a lucky roll. Rings take no plus.
-
-Armour defense is summed exact across the worn set and rounded once, not rounded per
-piece — base rolls are only 1–9, so per-piece rounding would swallow whole levels (a
-def-1 boot would read 1 until +7). A fully honed set of def-1 commons goes 5 → 9.
-Tooltips show one decimal while a piece's honed defense is fractional.
++8% weapon damage per level, max +10.
 Cost = round((15 + ilvl·5) × rarityMult × 1.5^plus), rarityMult common 1 / magic 1.6 / rare 2.4 / unique 4.
 
-| item | +0→+1 | +4→+5 | +9→+10 |
+| weapon | +0→+1 | +4→+5 | +9→+10 |
 | --- | ---: | ---: | ---: |
 | common (floor 1) | 20g | 101g | 769g |
 | rare (floor 5) | 96g | 486g | 3691g |

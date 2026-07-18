@@ -189,6 +189,31 @@ test('snapshots are per-player and filtered to the area of interest', () => {
   assert.ok(JSON.stringify(snap).length < 8000, 'a snapshot stays small enough to send at 30 Hz');
 });
 
+test('behavior telegraphs and hostile bolts ride the wire (Phase 4)', () => {
+  const room = new Room({ code: 'ABCD', seed: 29 });
+  const a = room.join({ name: 'Ash' });
+  room.state.monsters.length = 0;
+  room.state.projectiles.length = 0;
+  const p = room.state.players[0];
+  // A caster mid-wind-up close enough to be in AOI.
+  room.state.monsters.push({ id: 9300, type: 'cultist', name: null, hp: 20, maxHP: 20, x: p.x + 40, y: p.y, r: 8, facing: 0, hitT: 0, tel: 0.6, aimX: p.x, aimY: p.y, castT: 0.2, behavior: 'ranged' });
+  // A hostile bolt in flight.
+  room.state.projectiles.push({ id: 9301, kind: 'bolt', hostile: true, x: p.x + 20, y: p.y, angle: 2.5, dmg: 9, vx: -100, vy: 0, ttl: 2 });
+
+  const snap = room.snapshotFor(a.id);
+  const mon = snap.monsters.find((m) => m.id === 9300);
+  assert.ok(mon, 'the caster is in view');
+  assert.equal(mon.tel, 0.6, 'telegraph charge rides the wire so remote clients can draw the wind-up');
+  assert.ok(!('behavior' in mon), 'the behavior tag stays server-side — the client derives the cue from type');
+  assert.ok(!('aimX' in mon) && !('castT' in mon), 'server-only timers are not serialized');
+
+  const bolt = snap.projectiles.find((pr) => pr.id === 9301);
+  assert.ok(bolt, 'the hostile bolt is on the wire');
+  assert.equal(bolt.kind, 'bolt', 'the client learns the kind so it can draw it');
+  assert.equal(bolt.angle, 2.5, 'its heading rides along');
+  assert.ok(!('hostile' in bolt) && !('dmg' in bolt), 'hostility/damage are server-authoritative, not sent');
+});
+
 test('events are delivered to the players near them and no one else', () => {
   const room = new Room({ code: 'ABCD', seed: 28 });
   const a = room.join({ name: 'Ash' });
