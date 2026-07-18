@@ -13,6 +13,7 @@
   E.starterWeapon = () => ({
     slot: 'weapon',
     base: 'Short Sword',
+    family: 'sword',
     name: 'Rusty Sword',
     rarity: 'common',
     color: Items.RARITIES.common.color,
@@ -62,6 +63,10 @@
       manaRegen: P.manaRegenBase + sk.manaRegen,
       defense: g.defense + sk.defense,
       lifePerKill: g.lifePerKill,
+      manaPerKill: g.manaPerKill || 0,
+      critChance: g.critChance || 0,
+      thorns: g.thorns || 0,
+      lifeRegen: g.lifeRegen || 0,
       xpMult: g.xpMult,
       moveMult: g.moveMult,
     };
@@ -129,6 +134,7 @@
       aggro: base.aggro,
       attackRange: base.attackRange,
       attackCd: base.attackCd,
+      behavior: base.behavior || 'melee',
     };
     if (champion) {
       // Deterministic name (no rng needed) so generation stays reproducible.

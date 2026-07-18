@@ -50,6 +50,10 @@
       p.healPool = 0;
     }
     p.mana = Math.min(stats.maxMana, (p.mana || 0) + stats.manaRegen * dt);
+    // Life regeneration from gear (separate from the healPool potion drip above).
+    if (stats.lifeRegen > 0 && p.hp > 0 && p.hp < stats.maxHP) {
+      p.hp = Math.min(stats.maxHP, p.hp + stats.lifeRegen * dt);
+    }
     for (const k of Object.keys(p.skillCd)) p.skillCd[k] = Math.max(0, p.skillCd[k] - dt);
     p.hurtT = Math.max(0, p.hurtT - dt);
     p.attackT = Math.max(0, p.attackT - dt);

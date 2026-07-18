@@ -54,7 +54,8 @@ line(`Bosses (every 2nd floor, brute stock): ×${Balance.boss.hp} HP, ×${Balanc
 line();
 for (const type of Object.keys(Balance.monsters)) {
   const b = Balance.monsters[type];
-  line(`### ${type} — base ${b.hp} hp / ${b.dmg} dmg / ${b.xp} xp · speed ${b.speed} · aggro ${b.aggro}px${b.minFloor > 1 ? ` · from floor ${b.minFloor}` : ''}`);
+  const tag = b.behavior && b.behavior !== 'melee' ? ` · behavior: ${b.behavior}` : '';
+  line(`### ${type} — base ${b.hp} hp / ${b.dmg} dmg / ${b.xp} xp · speed ${b.speed} · aggro ${b.aggro}px${b.minFloor > 1 ? ` · from floor ${b.minFloor}` : ''}${tag}`);
   line();
   line('| floor | hp | dmg | xp | champion hp/dmg |');
   line('| ---: | ---: | ---: | ---: | --- |');
@@ -62,6 +63,17 @@ for (const type of Object.keys(Balance.monsters)) {
     const m = E.makeMonster(type, f, false);
     const c = E.makeMonster(type, f, true);
     line(`| ${f} | ${m.hp} | ${m.dmg} | ${m.xp} | ${c.hp} / ${c.dmg} |`);
+  }
+  line();
+}
+
+if (Balance.behaviors) {
+  line('### Behavior tuning (special archetypes)');
+  line();
+  line('Telegraph windows are deliberately generous so every special is dodgeable.');
+  line();
+  for (const [name, b] of Object.entries(Balance.behaviors)) {
+    line(`- **${name}** — ${Object.entries(b).map(([k, v]) => `${k}: ${v}`).join(' · ')}`);
   }
   line();
 }

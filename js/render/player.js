@@ -82,11 +82,11 @@
 
     const by = p.y + bob * 0.3;
 
-    // Held weapon, styled by kind (sword sweeps, bow aims, wand glows). Allies from
-    // a snapshot carry no equipment, so default the whole map to empty.
+    // Held weapon, styled by visual family (blades sweep, bows aim, wands glow, staves
+    // channel). Allies from a snapshot carry no equipment, so default to a plain sword.
     const eq = p.equip || {};
     const weaponItem = eq.weapon;
-    const wkind = (weaponItem && weaponItem.kind) || 'melee';
+    const wfamily = (weaponItem && weaponItem.family) || 'sword';
     const heldArc = p.swing && p.swing.arc && !p.swing.ranged ? p.swing.arc : Game.ARC_WIDTH;
     const swordAngle = p.swing
       ? p.swing.ranged
@@ -98,7 +98,19 @@
     ctx.save();
     ctx.translate(hx, hy);
     ctx.rotate(swordAngle);
-    if (wkind === 'bow') {
+    // A straight-blade helper reused by sword/greatsword/dagger (length + width vary).
+    const blade = (len, halfW, grip) => {
+      ctx.fillStyle = '#cfd6dd';
+      ctx.fillRect(0, -halfW, len, halfW * 2);
+      ctx.beginPath();
+      ctx.moveTo(len, -halfW);
+      ctx.lineTo(len + 4, 0);
+      ctx.lineTo(len, halfW);
+      ctx.fill();
+      ctx.fillStyle = '#7a5b2e';
+      ctx.fillRect(-1, -grip, 2.5, grip * 2);
+    };
+    if (wfamily === 'bow') {
       ctx.strokeStyle = '#8a6b3a';
       ctx.lineWidth = 2.6;
       ctx.beginPath();
@@ -110,7 +122,21 @@
       ctx.moveTo(Math.cos(-1.15) * 9, Math.sin(-1.15) * 9);
       ctx.lineTo(Math.cos(1.15) * 9, Math.sin(1.15) * 9);
       ctx.stroke();
-    } else if (wkind === 'wand') {
+    } else if (wfamily === 'crossbow') {
+      ctx.fillStyle = '#6b5330';
+      ctx.fillRect(0, -1.4, 13, 2.8);
+      ctx.strokeStyle = '#8f98a0';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.arc(9, 0, 7, -1.4, 1.4);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(230,225,205,0.85)';
+      ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(9 + Math.cos(-1.4) * 7, Math.sin(-1.4) * 7);
+      ctx.lineTo(9 + Math.cos(1.4) * 7, Math.sin(1.4) * 7);
+      ctx.stroke();
+    } else if (wfamily === 'wand') {
       ctx.fillStyle = '#5e4470';
       ctx.fillRect(0, -1.3, 12, 2.6);
       const wg = ctx.createRadialGradient(13, 0, 0.5, 13, 0, p.swing ? 8 : 5);
@@ -121,16 +147,57 @@
       ctx.beginPath();
       ctx.arc(13, 0, p.swing ? 8 : 5, 0, Math.PI * 2);
       ctx.fill();
-    } else {
-      ctx.fillStyle = '#cfd6dd';
-      ctx.fillRect(0, -1.6, 17, 3.2);
-      ctx.beginPath();
-      ctx.moveTo(17, -1.6);
-      ctx.lineTo(21, 0);
-      ctx.lineTo(17, 1.6);
-      ctx.fill();
+    } else if (wfamily === 'staff') {
       ctx.fillStyle = '#7a5b2e';
-      ctx.fillRect(-1, -4, 2.5, 8);
+      ctx.fillRect(-2, -1.5, 20, 3);
+      const sg = ctx.createRadialGradient(20, 0, 0.5, 20, 0, p.swing ? 9 : 6);
+      sg.addColorStop(0, '#eaffff');
+      sg.addColorStop(0.5, '#6fd0ff');
+      sg.addColorStop(1, 'rgba(60,160,255,0)');
+      ctx.fillStyle = sg;
+      ctx.beginPath();
+      ctx.arc(20, 0, p.swing ? 9 : 6, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (wfamily === 'thrown') {
+      ctx.fillStyle = '#7a5b2e';
+      ctx.fillRect(0, -1.2, 12, 2.4);
+      ctx.fillStyle = '#8f98a0';
+      ctx.beginPath();
+      ctx.moveTo(9, -2);
+      ctx.quadraticCurveTo(16, 0.5, 12, 5);
+      ctx.lineTo(9, 2);
+      ctx.fill();
+    } else if (wfamily === 'axe') {
+      ctx.fillStyle = '#7a5b2e';
+      ctx.fillRect(0, -1.5, 17, 3);
+      ctx.fillStyle = '#8f98a0';
+      ctx.beginPath();
+      ctx.moveTo(13, -3);
+      ctx.quadraticCurveTo(22, -1, 20, 5);
+      ctx.lineTo(13, 3);
+      ctx.fill();
+    } else if (wfamily === 'mace' || wfamily === 'flail') {
+      ctx.fillStyle = '#7a5b2e';
+      ctx.fillRect(0, -1.5, 15, 3);
+      ctx.fillStyle = '#8f98a0';
+      ctx.beginPath();
+      ctx.arc(18, 0, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (wfamily === 'spear') {
+      ctx.fillStyle = '#7a5b2e';
+      ctx.fillRect(-3, -1.2, 24, 2.4);
+      ctx.fillStyle = '#cfd6dd';
+      ctx.beginPath();
+      ctx.moveTo(21, -3);
+      ctx.lineTo(27, 0);
+      ctx.lineTo(21, 3);
+      ctx.fill();
+    } else if (wfamily === 'greatsword') {
+      blade(23, 2.4, 5);
+    } else if (wfamily === 'dagger') {
+      blade(10, 1.5, 3);
+    } else {
+      blade(17, 1.6, 4); // sword
     }
     ctx.restore();
 

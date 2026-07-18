@@ -147,10 +147,108 @@
     G.burst(state, m.x, m.y, '#a3232e', 7, 110);
     if (m.hp <= 0) killMonster(state, m, stats, killer || state.player);
   }
+  G.hitMonster = hitMonster; // exported for thorns reflection (and Phase 4 behaviors)
+
+  // The single "a monster hurts a player" path, shared by melee lunges (ai.js),
+  // hostile projectiles, and exploder blasts. `rawDmgOrFn` may be a thunk so a
+  // random damage roll only fires when the hit actually lands (dodge short-circuits
+  // it, preserving the RNG stream for the existing melee path). Pass opts.attacker
+  // (the monster) to enable thorns retaliation; ranged/blast sources omit it.
+  function hurtPlayer(state, p, rawDmgOrFn, opts) {
+    opts = opts || {};
+    if (p.dodgeT > 0 && !opts.ignoreDodge) {
+      G.floatText(state, p.x, p.y - 24, 'dodged!', '#c9c2b2', 13);
+      return 0;
+    }
+    const stats = Entities.effectiveStats(p);
+    const raw = typeof rawDmgOrFn === 'function' ? rawDmgOrFn() : rawDmgOrFn;
+    const dmg = Entities.damageAfterDefense(raw, stats.defense);
+    p.hp -= dmg;
+    p.hurtT = 0.3;
+    state.shake = Math.min(8, state.shake + (opts.shake || 2.5));
+    G.floatText(state, p.x, p.y - 24, `-${dmg}`, '#ff5c4d', 15);
+    G.burst(state, p.x, p.y, '#c03a2b', 6, 100);
+    G.sfx(state, 'hurt');
+    // Thorns: melee retaliation only (a projectile/blast has no attacker to bite).
+    if (opts.attacker && stats.thorns > 0) G.hitMonster(state, opts.attacker, stats.thorns, stats, 0, 0, p);
+    return dmg;
+  }
+  G.hurtPlayer = hurtPlayer;
+
+  // A caster's bolt: a hostile, fixed-damage projectile aimed at (tx, ty).
+  G.spawnHostileBolt = function spawnHostileBolt(state, m, tx, ty, speed, dmg) {
+    const a = Math.atan2(ty - m.y, tx - m.x);
+    state.projectiles.push({
+      id: state.nextId++,
+      hostile: true,
+      x: m.x + Math.cos(a) * (m.size + 4),
+      y: m.y + Math.sin(a) * (m.size + 4),
+      vx: Math.cos(a) * speed,
+      vy: Math.sin(a) * speed,
+      dmg: Math.max(1, Math.round(dmg)),
+      kind: 'bolt',
+      ttl: 2.2,
+      angle: a,
+    });
+    G.sfx(state, 'fireball');
+  };
+
+  // An exploder's self-destruct: AoE damage to players in radius, then it removes
+  // itself (no kill credit / XP — it died on its own terms).
+  G.explodeMonster = function explodeMonster(state, m, radius, dmg, kb) {
+    G.burst(state, m.x, m.y, '#ff9a3d', 20, 180);
+    G.burst(state, m.x, m.y, '#d98b3f', 12, 120);
+    state.shake = Math.min(9, state.shake + 3);
+    G.sfx(state, 'explode');
+    for (const pl of state.players) {
+      if (pl.dead || pl.down) continue;
+      const reach = radius + G.PLAYER_R;
+      if (U.dist2(m.x, m.y, pl.x, pl.y) >= reach * reach) continue;
+      if (!G.lineOfSight(state.dungeon.grid, m.x, m.y, pl.x, pl.y)) continue;
+      hurtPlayer(state, pl, dmg, { shake: 3 });
+    }
+    G.damagePropsInRadius(state, m.x, m.y, radius, dmg);
+    const i = state.monsters.indexOf(m);
+    if (i !== -1) state.monsters.splice(i, 1);
+  };
+
+  // A summoner raises a minion beside itself (deterministic via state.srand). Returns
+  // the minion, or null if the roll landed it in a wall.
+  G.spawnMinion = function spawnMinion(state, summoner, type) {
+    const partyN = state.partyN || (state.players && state.players.length) || 1;
+    const ang = state.srand() * Math.PI * 2;
+    const d = summoner.size + 14;
+    const x = summoner.x + Math.cos(ang) * d;
+    const y = summoner.y + Math.sin(ang) * d;
+    if (G.collides(state.dungeon.grid, x, y, 8)) return null;
+    const minion = {
+      ...Entities.makeMonster(type, state.floor, false, partyN),
+      id: state.nextId++,
+      x,
+      y,
+      attackT: 0.3,
+      hitT: 0,
+      lungeT: 0,
+      wanderT: 0,
+      wandA: 0,
+      aggroed: true, // raised already hostile
+      kbx: 0,
+      kby: 0,
+      summonerId: summoner.id,
+    };
+    state.monsters.push(minion);
+    G.burst(state, x, y, '#6f8f6f', 8, 90);
+    return minion;
+  };
 
   function rollDamage(state, stats) {
-    return Math.max(1, Math.round(stats.damage * (0.85 + state.srand() * 0.3)));
+    let dmg = Math.max(1, Math.round(stats.damage * (0.85 + state.srand() * 0.3)));
+    // Critical strike: a 1.5× hit. The srand() draw is guarded on critChance so gear
+    // without crit never perturbs the RNG stream (byte-identical to the old roll).
+    if (stats.critChance && state.srand() < stats.critChance) dmg = Math.round(dmg * 1.5);
+    return dmg;
   }
+  G.rollDamage = rollDamage; // exported for tests (crit determinism)
 
   function playerAttack(state, p = state.player) {
     const stats = Entities.effectiveStats(p);
@@ -175,9 +273,12 @@
       return;
     }
 
-    // Ranged: bows loose arrows, wands hurl exploding fireballs.
+    // Ranged: AoE weapons (wand/staff) hurl exploding fireballs; thrown weapons
+    // spin a non-splash projectile; bows/crossbows loose arrows/bolts. The blast is
+    // driven by `stats.aoe`, so any AoE weapon kind explodes without special-casing.
     p.swing = { t: 0, dur: 0.15, facing: p.facing, radius: 24, arc: 0.8, ranged: true };
     const a = p.facing;
+    const projKind = stats.aoe ? 'fireball' : stats.kind === 'thrown' ? 'thrown' : 'arrow';
     state.projectiles.push({
       id: state.nextId++,
       ownerId: p.id,
@@ -186,12 +287,12 @@
       vx: Math.cos(a) * stats.projSpeed,
       vy: Math.sin(a) * stats.projSpeed,
       dmg: rollDamage(state, stats),
-      kind: stats.kind === 'wand' ? 'fireball' : 'arrow',
+      kind: projKind,
       aoe: stats.aoe,
       ttl: 1.8,
       angle: a,
     });
-    G.sfx(state, stats.kind === 'wand' ? 'fireball' : 'bow');
+    G.sfx(state, projKind === 'fireball' ? 'fireball' : 'bow');
   }
   G.playerAttack = playerAttack;
 
@@ -218,8 +319,43 @@
     G.damagePropsInRadius(state, pr.x, pr.y, pr.aoe, pr.dmg);
   }
 
+  // Monster-fired projectiles (e.g. caster bolts). They damage PLAYERS, never
+  // monsters, carry a fixed spawn-time damage (no owner lookup), and shatter on the
+  // first wall or hero they reach. Serialization is free — they live in the same
+  // state.projectiles array and carry the same wire fields (id/x/y/kind/angle).
+  function updateHostileProjectile(state, pr, dt) {
+    pr.ttl -= dt;
+    let dead = pr.ttl <= 0;
+    const steps = Math.max(1, Math.ceil((Math.hypot(pr.vx, pr.vy) * dt) / 8));
+    for (let s = 0; s < steps && !dead; s++) {
+      pr.x += (pr.vx * dt) / steps;
+      pr.y += (pr.vy * dt) / steps;
+      if (G.collides(state.dungeon.grid, pr.x, pr.y, 3)) {
+        dead = true;
+        G.burst(state, pr.x, pr.y, '#b46bff', 5, 70);
+        break;
+      }
+      for (const pl of state.players) {
+        if (pl.dead || pl.down) continue;
+        const reach = G.PLAYER_R + 4;
+        if (U.dist2(pr.x, pr.y, pl.x, pl.y) < reach * reach) {
+          dead = true;
+          hurtPlayer(state, pl, pr.dmg, { shake: 2 });
+          G.burst(state, pr.x, pr.y, '#b46bff', 6, 90);
+          break;
+        }
+      }
+    }
+    if (dead) state.projectiles.splice(state.projectiles.indexOf(pr), 1);
+  }
+  G.updateHostileProjectile = updateHostileProjectile;
+
   G.updateProjectiles = function updateProjectiles(state, dt) {
     for (const pr of [...state.projectiles]) {
+      if (pr.hostile) {
+        updateHostileProjectile(state, pr, dt);
+        continue;
+      }
       pr.ttl -= dt;
       let dead = pr.ttl <= 0;
       // Swept movement in ~8px steps so fast projectiles can't tunnel through walls.
@@ -310,9 +446,13 @@
       state.shake = 7;
       G.message(state, `${m.name} has been slain!`, '#ff9a3d');
     }
-    // "You kill, you leech": lifePerKill heals the credited killer only.
+    // "You kill, you leech": lifePerKill heals and manaPerKill restores mana to the
+    // credited killer only.
     if (stats.lifePerKill > 0) {
       killer.hp = Math.min(Entities.effectiveStats(killer).maxHP, killer.hp + stats.lifePerKill);
+    }
+    if (stats.manaPerKill > 0) {
+      killer.mana = Math.min(Entities.effectiveStats(killer).maxMana, (killer.mana || 0) + stats.manaPerKill);
     }
     // XP goes to every living player within share range of the kill (Task 3). Solo:
     // the one player is always in range ⇒ identical to the old single-player grant.
