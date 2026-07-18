@@ -133,6 +133,9 @@
       // reading the notices. Returning here also freezes the proximity flags
       // below, so the board stays live while you read it.
       if (state.boardOpen && localIn.pressed.has('interact')) state.boardOpen = false;
+      // E is also the way out of the stall it opened — the frozen `trading` flag
+      // is what tells us the bag was opened by walking up to Grizzle.
+      else if (state.invOpen && state.trading && localIn.pressed.has('interact')) state.invOpen = false;
       return state;
     }
 
@@ -249,11 +252,15 @@
       if (p === state.player && U.dist2(p.x, p.y, qx, qy) < 70 * 70) state.questing = true;
     }
 
-    // Ground pickups — or a quick vendor purchase / anvil strike / read of the
-    // notices in town.
+    // Ground pickups — or opening Grizzle's stall / an anvil strike / a read of
+    // the notices in town.
     if (input.pressed.has('interact')) {
-      if (state.trading && p === state.player) Game.buyPotion(state);
-      else if (state.smithing && p === state.player) Game.upgradeEquipped(state);
+      if (state.trading && p === state.player) {
+        // The stall is the shop strip drawn above the bag, so trading means
+        // opening the inventory; the pause block above closes it on the next E.
+        state.invOpen = true;
+        state.treeOpen = state.boardOpen = false;
+      } else if (state.smithing && p === state.player) Game.upgradeEquipped(state);
       else if (state.questing && p === state.player) state.boardOpen = true;
       else G.tryPickup(state, p);
     }
