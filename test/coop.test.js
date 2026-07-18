@@ -392,3 +392,73 @@ test('the render + HUD path draws a party (down ally, descent banner) without th
   UI.draw(ctx, state, view);
   assert.ok(true, 'party render + HUD path completed');
 });
+
+// ---- Task 8: exit proof — 4-seat room, co-op invariants end to end ----
+
+// Advance a room by `seconds` in 30 Hz steps from a fixed clock (mirrors room.test).
+function advance(room, seconds, t0) {
+  const stepMs = 1000 / 30;
+  let t = t0;
+  room.tick(t); // prime lastMs
+  for (let i = 0; i < Math.round(seconds * 30); i++) {
+    t += stepMs;
+    room.tick(t);
+  }
+  return t;
+}
+
+test('Task 8: a 4-seat room is party-scaled, pays in-range XP, and instances drops per owner', () => {
+  const { Room } = require('../server/room.js');
+  const room = new Room({ code: 'CCCC', seed: 4242 });
+  for (let i = 0; i < 4; i++) room.join({});
+  const s = room.state;
+  assert.equal(s.partyN, 4, 'four seats ⇒ party of four');
+
+  // The floor is scaled to the party.
+  const mon = s.monsters.find((m) => !m.boss);
+  assert.equal(mon.maxHP, Entities.makeMonster(mon.type, s.floor, mon.champion, 4).maxHP, 'monsters are 4-party scaled');
+
+  // Cluster the party on a monster; a kill pays full XP to every in-range member.
+  const target = s.monsters[0];
+  for (const pl of s.players) { pl.x = target.x + 8; pl.y = target.y; pl.xp = 0; }
+  Game._.awardKillXP(s, target, s.players[0]);
+  assert.ok(s.players.every((pl) => pl.xp > 0), 'all four nearby members were paid XP');
+
+  // A boss kill instances a shower per owner; each seat sees only its own drops.
+  s.groundItems = [];
+  const boss = { ...Entities.makeBoss(s.floor, 4), id: 777, x: target.x, y: target.y };
+  Game.dropLoot(s, boss, s.players[0]);
+  const owners = new Set(s.groundItems.map((g) => g.ownerId));
+  assert.equal(owners.size, 4, 'a distinct instanced shower for each of the four');
+  for (const pl of s.players) {
+    const mine = room.snapshotFor(pl.id).groundItems;
+    assert.ok(mine.length > 0 && mine.every((g) => g.ownerId == null || g.ownerId === pl.id), `${pl.id} sees only its own loot`);
+  }
+});
+
+test('Task 8: death/revive round-trips over the room, and a full wipe ends the run', () => {
+  const { Room } = require('../server/room.js');
+  const room = new Room({ code: 'DDDD', seed: 55 });
+  for (let i = 0; i < 4; i++) room.join({});
+  const s = room.state;
+  s.monsters = []; // isolate from combat for a deterministic revive round-trip
+
+  const [p0, p1] = s.players;
+  p1.hp = 0;
+  let t = advance(room, 0.1, 1000);
+  assert.equal(p1.down, true, 'a fallen hero goes down, not dead');
+  assert.equal(s.dead, false, 'the run continues');
+
+  // p0 stands over p1 and revives it by holding proximity.
+  p0.x = p1.x;
+  p0.y = p1.y;
+  const keepClear = () => { s.monsters = []; };
+  for (let i = 0; i < 90; i++) { keepClear(); t += 1000 / 30; room.tick(t); }
+  assert.equal(p1.down, false, 'the ally was revived');
+  assert.ok(p1.hp > 0, 'revived with HP');
+
+  // Now wipe everyone at once → the run ends.
+  for (const pl of s.players) pl.hp = 0;
+  t = advance(room, 0.1, t + 1000);
+  assert.equal(s.dead, true, 'a simultaneous full wipe ends the run');
+});
