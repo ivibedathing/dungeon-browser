@@ -125,22 +125,22 @@
       if (!I.inRect(mx, my, L.equip[slot])) continue;
       const item = state.player.equip[slot];
       if (item) state.hover = { item, x: mx, y: my, context: 'equipped' };
-      // At the anvil a click hones the piece instead of stripping it off — the
-      // ring is the one worn slot Borin won't touch, so it still unequips.
-      const honing = state.smithing && Items.isSmithable(item);
-      if (input.mouse.click && item && honing) {
-        Game.smithUpgrade(state, 'equip', slot);
-      }
-      if (input.mouse.click && item && slot !== 'weapon' && !honing) {
-        // Unequip into the bag (weapon stays — you always need something to swing).
-        if (state.bag.slots.indexOf(null) !== -1) {
-          state.player.equip[slot] = null;
-          Items.addItem(state.bag, item);
-          Game.message(state, `Unequipped ${item.name}.`, '#9aa');
-          const maxHP = Entities.effectiveStats(state.player).maxHP;
-          state.player.hp = Math.min(state.player.hp, maxHP);
-        } else {
-          Game.message(state, 'No room in your inventory.', '#ff5c4d');
+      if (input.mouse.click && item) {
+        // At the anvil a click hones the piece instead of stripping it off — the
+        // ring is the one worn slot Borin won't touch, so it still unequips.
+        if (state.smithing && Items.isSmithable(item)) {
+          Game.smithUpgrade(state, 'equip', slot);
+        } else if (slot !== 'weapon') {
+          // Unequip into the bag (weapon stays — you always need something to swing).
+          if (state.bag.slots.indexOf(null) !== -1) {
+            state.player.equip[slot] = null;
+            Items.addItem(state.bag, item);
+            Game.message(state, `Unequipped ${item.name}.`, '#9aa');
+            const maxHP = Entities.effectiveStats(state.player).maxHP;
+            state.player.hp = Math.min(state.player.hp, maxHP);
+          } else {
+            Game.message(state, 'No room in your inventory.', '#ff5c4d');
+          }
         }
       }
     }

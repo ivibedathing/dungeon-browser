@@ -80,7 +80,12 @@
   ];
   const RING_BASES = [{ base: 'Bone Ring' }, { base: 'Iron Loop' }, { base: 'Occult Band' }];
 
-  Items.EQUIP_SLOTS = ['weapon', 'helmet', 'armor', 'gloves', 'pants', 'boots', 'ring'];
+  // The worn-slot taxonomy, declared once and derived outward: armour is the set
+  // that rolls defense, Borin works metal (armour + weapon, never the ring), and
+  // the ring rounds out what you can wear.
+  Items.ARMOR_SLOTS = ['helmet', 'armor', 'gloves', 'pants', 'boots'];
+  Items.SMITHABLE_SLOTS = ['weapon', ...Items.ARMOR_SLOTS];
+  Items.EQUIP_SLOTS = [...Items.SMITHABLE_SLOTS, 'ring'];
 
   // Affix generators: value scales gently with item level (= dungeon floor).
   const AFFIXES = {
@@ -315,7 +320,6 @@
   Items.PLUS_DEF = Balance.upgrade.defPerPlus;
 
   // Borin works metal, not gemcraft: every worn slot but the ring takes a +N.
-  Items.SMITHABLE_SLOTS = Items.EQUIP_SLOTS.filter((s) => s !== 'ring');
   Items.isSmithable = (item) => !!item && Items.SMITHABLE_SLOTS.includes(item.slot);
 
   Items.weaponDamage = (item) => Math.round(item.stats.damage * (1 + Items.PLUS_DMG * (item.plus || 0)));
@@ -330,7 +334,11 @@
   Items.armorDefense = (item) => (item.stats.defense || 0) * (1 + Items.PLUS_DEF * (item.plus || 0));
 
   // Tooltip-friendly form: one decimal, and only when honing made it fractional.
-  Items.formatDefense = (v) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
+  // Rounds first so float noise (1.9999999) prints "2" rather than "2.0".
+  Items.formatDefense = (v) => {
+    const r = Math.round(v * 10) / 10;
+    return Number.isInteger(r) ? String(r) : r.toFixed(1);
+  };
 
   Items.displayName = (item) => (item.plus ? `+${item.plus} ${item.name}` : item.name);
 

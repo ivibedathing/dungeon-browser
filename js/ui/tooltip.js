@@ -50,14 +50,12 @@
         if (kind === 'melee') lines.push({ text: `Radius ${item.stats.radius}`, color: '#efe6d2' });
         if (kind === 'wand') lines.push({ text: `Blast radius ${item.stats.aoe}`, color: '#efe6d2' });
       }
-      if (['armor', 'helmet', 'gloves', 'pants', 'boots'].includes(item.slot)) {
+      if (Items.ARMOR_SLOTS.includes(item.slot)) {
         const eff = Items.armorDefense(item);
+        const eqDef = cmp ? Items.armorDefense(equipped) : 0;
         let def = `Defense ${Items.formatDefense(eff)}`;
-        if (cmp) {
-          const d = Math.round((eff - Items.armorDefense(equipped)) * 10) / 10;
-          def += `  (${d >= 0 ? '+' : ''}${Items.formatDefense(d)})`;
-        }
-        lines.push({ text: def, color: cmp && eff < Items.armorDefense(equipped) ? '#e5807a' : '#efe6d2' });
+        if (cmp) def += `  (${eff >= eqDef ? '+' : ''}${Items.formatDefense(eff - eqDef)})`;
+        lines.push({ text: def, color: cmp && eff < eqDef ? '#e5807a' : '#efe6d2' });
         if (item.stats.maxHP) lines.push({ text: `+${item.stats.maxHP} to Life`, color: '#efe6d2' });
         if (item.stats.maxMana) lines.push({ text: `+${item.stats.maxMana} to Mana`, color: '#7fa8ff' });
         if (item.stats.speedMult) lines.push({ text: `+${Math.round(item.stats.speedMult * 100)}% Attack Speed`, color: '#efe6d2' });
