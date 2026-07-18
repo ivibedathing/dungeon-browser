@@ -194,8 +194,10 @@ test('pipeline covers town, portals, trading, ranged weapons and the dressed pla
   p.y = (d.vendor.y + 0.5) * 32;
   for (let i = 0; i < 3; i++) frame();
   assert.equal(state.trading, true);
-  input.pressed.add('inv');
+  for (let i = 0; i < 5; i++) frame(); // the "press E to trade" prompt
+  input.pressed.add('interact');
   frame();
+  assert.equal(state.invOpen, true, 'E opened the stall');
   const panelX = (view.w - 660) / 2;
   const panelY = (view.h - 440) / 2 - 14;
   input.mouse.x = panelX + 24 + 26;
