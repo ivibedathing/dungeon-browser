@@ -83,12 +83,9 @@ class Room {
     if (this.isFull) return null;
     const id = `p${this.seat++}`;
     const isHost = this.playerCount === 0;
+    // Per-player bag (Phase 4): playerFromCharacter seeds p.bag from the loaded blob;
+    // a fresh guest gets an empty p.bag. state.bag aliases players[0] via syncLocalAlias.
     const p = opts && opts.character ? Character.playerFromCharacter(opts.character, id) : freshPlayer(id, opts);
-    if (opts && opts.character && isHost && opts.character.bag) {
-      // The room bag is shared in Phase 3; the host owns it. Guests keep their own
-      // stored bag frozen server-side (see the save path) so co-op can't clobber it.
-      this.state.bag = opts.character.bag;
-    }
     const entry = this.state.dungeon.entry;
     // Fan joiners around the entry tile so two players never occupy one point.
     const a = (this.playerCount / Room.MAX_PLAYERS) * Math.PI * 2;
@@ -136,7 +133,10 @@ class Room {
   // moves those concerns client-side, players[0] must always be a player who is
   // actually here — otherwise a host leaving would leave the sim steering a ghost.
   syncLocalAlias() {
-    if (this.state.players.length) this.state.player = this.state.players[0];
+    if (this.state.players.length) {
+      this.state.player = this.state.players[0];
+      this.state.bag = this.state.player.bag; // shared vendor/HUD/self.gold read the local bag
+    }
   }
 
   // Buffer one validated input. Returns false for stale/duplicate packets — UDP-ish
@@ -241,10 +241,8 @@ class Room {
       ack: this.ack(id),
       floor: s.floor,
       // The requesting player's own private state — the fields the HUD reads that
-      // aren't in the shared entity lists and that the client can't derive (its
-      // predicted maxHP/maxMana already match, since its render hero is a starter
-      // like the server's). Bag gold and kills are shared run state in Phase 2;
-      // per-player loot is Phase 4.
+      // aren't in the shared entity lists and that the client can't derive. Gold is
+      // now per-player (Phase 4 instanced bags): read this player's own bag.
       self: {
         mana: round2(me.mana || 0),
         maxMana: Math.round(myStats.maxMana),
@@ -252,7 +250,7 @@ class Room {
         xp: me.xp,
         level: me.level,
         skillCd: { whirlwind: round3(me.skillCd.whirlwind), nova: round3(me.skillCd.nova), prayer: round3(me.skillCd.prayer) },
-        gold: s.bag.gold,
+        gold: (me.bag && me.bag.gold) || 0,
         kills: s.kills,
       },
       // Party members are never AOI-culled: the HUD and (Phase 4) the minimap
@@ -294,8 +292,10 @@ class Room {
       projectiles: s.projectiles
         .filter((pr) => this.inAOI(me, pr.x, pr.y))
         .map((pr) => ({ id: pr.id, x: round2(pr.x), y: round2(pr.y), kind: pr.kind, angle: round3(pr.angle || 0) })),
+      // Instanced loot: a player only ever sees unowned (shared) drops and its own.
+      // A teammate's drop is never put on this player's wire, so it can't be grabbed.
       groundItems: s.groundItems
-        .filter((g) => this.inAOI(me, g.x, g.y))
+        .filter((g) => (g.ownerId == null || g.ownerId === id) && this.inAOI(me, g.x, g.y))
         .map((g) => ({ id: g.id, kind: g.kind, x: round2(g.x), y: round2(g.y), amount: g.amount, item: g.item || null })),
       // Standing breakables in view. Broken props leave the list, so clients simply
       // stop drawing them; the local dungeon regen supplies nothing here.

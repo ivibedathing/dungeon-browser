@@ -147,3 +147,68 @@ test('a player out of share range gets no XP from the kill', () => {
   Game._.playerAttack(state, p1);
   assert.ok(p1.xp > 0 && p0.xp === 0, 'only the in-range killer gained XP');
 });
+
+// ---- Task 4: instanced loot, per-player bags, pickup validation ----
+
+test('the bag is per-player and state.bag aliases the local player', () => {
+  const state = Game.newRun(5);
+  assert.ok(state.player.bag, 'the player owns a bag');
+  assert.equal(state.bag, state.player.bag, 'state.bag aliases the local player bag');
+});
+
+test('a kill near two players instances a separate owned drop for each', () => {
+  const state = Game.newRun(70);
+  state.groundItems = [];
+  const p0 = state.player;
+  const p1 = addAlly(state, 'p1', p0.x + 40, p0.y);
+  // A boss always showers loot; drop it right between the two nearby players.
+  const boss = { ...Entities.makeBoss(2), id: 999, x: p0.x + 20, y: p0.y };
+  Game.dropLoot(state, boss, p0);
+  const owners = new Set(state.groundItems.map((g) => g.ownerId));
+  assert.ok(owners.has('p0') && owners.has('p1'), 'both players got their own instanced drops');
+  // No drop is grabbable by the wrong player.
+  for (const g of state.groundItems) assert.ok(g.ownerId === 'p0' || g.ownerId === 'p1');
+});
+
+test('solo drops stay unowned (null owner) — the legacy shared path', () => {
+  const state = Game.newRun(71);
+  state.groundItems = [];
+  const boss = { ...Entities.makeBoss(2), id: 999, x: state.player.x, y: state.player.y };
+  Game.dropLoot(state, boss, state.player);
+  assert.ok(state.groundItems.length > 0, 'boss dropped loot');
+  assert.ok(state.groundItems.every((g) => g.ownerId == null), 'all solo drops are unowned');
+});
+
+test('pickup validation: a player cannot grab a teammate-owned item, but can grab its own and shared', () => {
+  const state = Game.newRun(72);
+  state.groundItems = [];
+  const p0 = state.player;
+  const p1 = addAlly(state, 'p1', p0.x + 300, p0.y);
+  const mkItem = () => Items.makeItem(1, U.mulberry32(9), { slot: 'armor' });
+  // p0-owned item next to p1 → p1 must not grab it.
+  state.groundItems.push({ id: 1, kind: 'item', item: mkItem(), x: p1.x + 8, y: p1.y, ownerId: 'p0' });
+  Game._.tryPickup(state, p1);
+  assert.ok(state.groundItems.some((g) => g.id === 1), 'p1 could not grab p0-owned loot');
+  // p1-owned item → p1 grabs it.
+  state.groundItems.push({ id: 2, kind: 'item', item: mkItem(), x: p1.x + 8, y: p1.y, ownerId: 'p1' });
+  Game._.tryPickup(state, p1);
+  assert.ok(!state.groundItems.some((g) => g.id === 2), 'p1 grabbed its own loot');
+  // Shared (null owner) item → anyone grabs it.
+  state.groundItems.push({ id: 3, kind: 'item', item: mkItem(), x: p1.x + 8, y: p1.y, ownerId: null });
+  Game._.tryPickup(state, p1);
+  assert.ok(!state.groundItems.some((g) => g.id === 3), 'p1 grabbed the shared loot');
+});
+
+test('snapshot hides a teammate-owned drop but shows shared drops to all', () => {
+  const { Room } = require('../server/room.js');
+  const room = new Room({ code: 'BBBB', seed: 9 });
+  const a = room.join({});
+  const b = room.join({});
+  const s = room.state;
+  const near = { x: s.players[0].x, y: s.players[0].y };
+  s.groundItems.push({ id: 10, kind: 'gold', amount: 5, x: near.x, y: near.y, ownerId: a.id });
+  s.groundItems.push({ id: 11, kind: 'gold', amount: 5, x: near.x, y: near.y, ownerId: b.id });
+  s.groundItems.push({ id: 12, kind: 'gold', amount: 5, x: near.x, y: near.y, ownerId: null });
+  const seenByA = room.snapshotFor(a.id).groundItems.map((g) => g.id).sort();
+  assert.deepEqual(seenByA, [10, 12], 'A sees its own + shared, not B\'s');
+});

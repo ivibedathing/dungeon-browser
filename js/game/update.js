@@ -226,11 +226,13 @@
       if (state.trading && p === state.player) Game.buyPotion(state);
       else if (state.smithing && p === state.player) Game.upgradeEquipped(state);
       else if (state.questing && p === state.player) state.boardOpen = true;
-      else G.tryPickup(state);
+      else G.tryPickup(state, p);
     }
+    // Gold magnets to whoever walks over it — but only its owner (or unowned) can claim
+    // it, and it credits that player's own bag.
     for (const g of [...state.groundItems]) {
-      if (g.kind === 'gold' && U.dist2(p.x, p.y, g.x, g.y) < GOLD_MAGNET * GOLD_MAGNET) {
-        state.bag.gold += g.amount;
+      if (g.kind === 'gold' && G.canClaim(g, p) && U.dist2(p.x, p.y, g.x, g.y) < GOLD_MAGNET * GOLD_MAGNET) {
+        p.bag.gold += g.amount;
         state.groundItems.splice(state.groundItems.indexOf(g), 1);
         G.floatText(state, p.x, p.y - 22, `+${g.amount} gold`, '#ffd84d', 12);
         G.sfx(state, 'gold');

@@ -116,7 +116,7 @@
       nextId: 1,
       player,
       players: [player],
-      bag: Items.createBag(),
+      bag: player.bag, // alias: the shared vendor/HUD/save read the local player's bag
       monsters: [],
       props: [],
       groundItems: [],

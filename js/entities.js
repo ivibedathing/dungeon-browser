@@ -38,6 +38,9 @@
       skillPoints: 0,
       skills: {},
       equip,
+      // Each hero owns their bag (co-op: instanced loot goes to p.bag). Solo/local
+      // play reads it through the state.bag alias, so the save format is unchanged.
+      bag: Items.createBag(),
     };
   };
 

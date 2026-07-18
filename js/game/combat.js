@@ -11,36 +11,51 @@
 
   // ---- Loot ----
 
+  // Instanced loot: a kill rolls drops independently for every living player within
+  // share range, each pile tagged with its owner's id (only that player sees/grabs it).
+  // Solo — or any kill with a single player in range — rolls ONCE with a null owner
+  // (the legacy shared path), so solo drop behavior is byte-identical (same srand usage).
   function dropLoot(state, m, killer = state.player) {
+    const range = (Balance.coop && Balance.coop.shareRange) || 900;
+    const r2 = range * range;
+    let recipients = (state.players || []).filter((pl) => !pl.dead && !pl.down && U.dist2(pl.x, pl.y, m.x, m.y) <= r2);
+    if (recipients.length === 0) recipients = [killer]; // the killer always earns a roll (also the no-players test path)
+    const shared = recipients.length <= 1;
+    for (const who of recipients) rollDropsFor(state, m, shared ? null : who.id);
+  }
+  Game.dropLoot = dropLoot; // exported for balance wiring tests and the future server
+
+  // One player's roll off a fallen monster, tagged with `ownerId` (null = shared/solo).
+  function rollDropsFor(state, m, ownerId) {
     const f = state.floor;
     const scatter = () => (state.srand() - 0.5) * 30;
+    const push = (o) => state.groundItems.push({ id: state.nextId++, ownerId, ...o });
     if (m.boss) {
       // Bosses always shower loot: two magic-or-better items plus a fat gold pile.
       for (let i = 0; i < 2; i++) {
         const item = Items.makeItem(f, state.srand, { guaranteeMagic: true });
-        state.groundItems.push({ id: state.nextId++, kind: 'item', item, x: m.x + scatter() * 1.6, y: m.y + scatter() * 1.6 });
+        push({ kind: 'item', item, x: m.x + scatter() * 1.6, y: m.y + scatter() * 1.6 });
       }
       const amount = Math.round(U.randInt(state.srand, 25, 45) * (1 + 0.3 * (f - 1)));
-      state.groundItems.push({ id: state.nextId++, kind: 'gold', amount, x: m.x + scatter(), y: m.y + scatter() });
+      push({ kind: 'gold', amount, x: m.x + scatter(), y: m.y + scatter() });
       return;
     }
     const roll = state.srand();
     if (m.champion || roll < DROPS.item) {
       const item = Items.makeItem(f, state.srand, { guaranteeMagic: m.champion });
-      state.groundItems.push({ id: state.nextId++, kind: 'item', item, x: m.x + scatter(), y: m.y + scatter() });
+      push({ kind: 'item', item, x: m.x + scatter(), y: m.y + scatter() });
     } else if (roll < DROPS.item + DROPS.potion) {
       const item = Items.makePotion(f, state.srand, state.srand() < DROPS.manaShare ? 'mana' : 'health');
-      state.groundItems.push({ id: state.nextId++, kind: 'item', item, x: m.x + scatter(), y: m.y + scatter() });
+      push({ kind: 'item', item, x: m.x + scatter(), y: m.y + scatter() });
     } else if (roll < DROPS.item + DROPS.potion + DROPS.gold) {
       const amount = Math.round(U.randInt(state.srand, 4, 9) * (1 + 0.3 * (f - 1)));
-      state.groundItems.push({ id: state.nextId++, kind: 'gold', amount, x: m.x + scatter(), y: m.y + scatter() });
+      push({ kind: 'gold', amount, x: m.x + scatter(), y: m.y + scatter() });
     }
     if (m.champion && state.srand() < DROPS.championGold) {
       const amount = Math.round(U.randInt(state.srand, 10, 20) * (1 + 0.3 * (f - 1)));
-      state.groundItems.push({ id: state.nextId++, kind: 'gold', amount, x: m.x + scatter(), y: m.y + scatter() });
+      push({ kind: 'gold', amount, x: m.x + scatter(), y: m.y + scatter() });
     }
   }
-  Game.dropLoot = dropLoot; // exported for balance wiring tests and the future server
 
   // ---- Breakable decorations ----
 
