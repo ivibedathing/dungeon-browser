@@ -98,13 +98,16 @@
     }
     ctx.globalAlpha = 1;
 
-    // The board is the one town fixture you must open by hand — say so.
-    if (state.questing && !state.boardOpen) {
+    // The board and the stall both open by hand — say so. Fixture ranges never
+    // overlap (see D.generateTown), so at most one of these is ever live.
+    const prompt = (state.questing && !state.boardOpen && 'Press E to read the notices')
+      || (state.trading && !state.invOpen && 'Press E to trade with Grizzle');
+    if (prompt) {
       const pulse = 0.6 + 0.4 * Math.sin(state.time * 4);
       ctx.font = `bold 12px ${SANS}`;
       ctx.textAlign = 'center';
       ctx.fillStyle = `rgba(255,216,77,${pulse})`;
-      ctx.fillText('Press E to read the notices', view.w / 2, view.h - 140);
+      ctx.fillText(prompt, view.w / 2, view.h - 140);
       ctx.textAlign = 'left';
     }
 

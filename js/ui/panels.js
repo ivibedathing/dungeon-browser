@@ -140,7 +140,7 @@
     ctx.textAlign = 'center';
     ctx.fillText(
       state.trading
-        ? 'Click your item: SELL · Right-click: drop · hold CTRL: compare · I or ESC: close'
+        ? 'Click your item: SELL · Right-click: drop · hold CTRL: compare · E, I or ESC: close'
         : 'Click: equip / drink · Right-click: drop · hold CTRL: compare · I or ESC: close',
       L.panel.x + 200 + 218,
       L.panel.y + L.panel.h - 16
