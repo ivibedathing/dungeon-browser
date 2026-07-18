@@ -57,6 +57,7 @@
         mana: p.mana,
         skillPoints: p.skillPoints,
         skills: p.skills,
+        prof: p.prof,
         equip: p.equip,
         // Per-character and dies with the hero; death clears the save entirely.
         // Normalized by Quests.mainFromSave on load, so a missing field is fine.

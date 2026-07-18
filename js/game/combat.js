@@ -285,6 +285,8 @@
     }
   };
 
+  G.hitMonster = hitMonster; // exported for the skill paths and tests
+
   function rollDamage(state, stats) {
     let dmg = Math.max(1, Math.round(stats.damage * (0.85 + state.srand() * 0.3)));
     // Critical strike: a 1.5× hit. The srand() draw is guarded on critChance so gear
@@ -522,10 +524,30 @@
     if (stats.manaPerKill > 0) {
       killer.mana = Math.min(Entities.effectiveStats(killer).maxMana, (killer.mana || 0) + stats.manaPerKill);
     }
+    // Weapon proficiency, unlike XP, is NOT shared: it goes to the hero who landed the
+    // killing blow, for the kind of weapon that landed it (`stats` is the attacker's
+    // own stat blob, so skill kills credit whatever they had equipped).
+    awardProficiency(state, m, stats, killer);
     // XP goes to every living player within share range of the kill (Task 3). Solo:
     // the one player is always in range ⇒ identical to the old single-player grant.
     awardKillXP(state, m, killer);
     dropLoot(state, m, killer);
+  }
+
+  // Credits the killing weapon's kind. Silent by design — proficiency is a slow
+  // background curve — except when the bonus crosses a whole percent, which is the
+  // smallest change a player can actually read off the character sheet.
+  function awardProficiency(state, m, stats, killer) {
+    if (!killer || !stats || !stats.kind) return;
+    const P = Balance.proficiency;
+    if (!P) return;
+    const before = Entities.profBonus(killer, stats.kind);
+    Entities.gainProficiency(killer, stats.kind, (m.xp || 0) * P.xpPerKill);
+    const after = Entities.profBonus(killer, stats.kind);
+    if (Math.floor(after * 100) > Math.floor(before * 100)) {
+      G.floatText(state, killer.x, killer.y - 34, `${stats.kind} +${Math.floor(after * 100)}%`, '#c9b37e', 13);
+      if (killer === state.player) G.save(state);
+    }
   }
 
   // Full XP (each hero's own xpMult) to every living player within Balance.coop.shareRange

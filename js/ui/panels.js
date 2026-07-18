@@ -15,6 +15,12 @@
       ['Mana', `${Math.round(s.maxMana)}`],
       ['Mana Regen', `${s.manaRegen.toFixed(1)}/s`],
     ];
+    // Mastery of the weapon you're actually holding — the other kinds' progress is
+    // still banked, it just isn't what's swinging right now.
+    if (s.profBonus > 0.005) {
+      const kind = s.kind.charAt(0).toUpperCase() + s.kind.slice(1);
+      lines.push([`${kind} Mastery`, `+${Math.round(s.profBonus * 100)}%`]);
+    }
     if (s.lifePerKill) lines.push(['Life per Kill', `+${s.lifePerKill}`]);
     if (s.xpMult > 1) lines.push(['Experience', `+${Math.round((s.xpMult - 1) * 100)}%`]);
     if (Math.abs(s.moveMult - 1) > 0.001) {
