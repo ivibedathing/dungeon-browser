@@ -2,6 +2,7 @@
 (function () {
   const Game = typeof window !== 'undefined' ? window.Game : require('./core.js');
   const Quests = typeof window !== 'undefined' ? window.Quests : require('../quests.js');
+  const Props = typeof window !== 'undefined' ? window.Props : require('../props.js');
   const G = Game._;
   const { TS } = G;
 
@@ -44,6 +45,21 @@
       });
     }
     state.bossFight = false;
+    // Live breakable decorations: one smashable object per placed prop, with its
+    // own hp and hit-flash timer (mirrors how monsters instantiate from spawns).
+    state.props = (dungeon.props || []).map((d) => {
+      const hp = Props.hp(d.type);
+      return {
+        id: state.nextId++,
+        type: d.type,
+        x: (d.x + 0.5) * TS,
+        y: (d.y + 0.5) * TS,
+        size: (Props.TYPES[d.type] || {}).size || 11,
+        hp,
+        maxHP: hp,
+        hitT: 0,
+      };
+    });
     state.groundItems = [];
     state.particles = [];
     state.floatTexts = [];
@@ -90,6 +106,7 @@
       players: [player],
       bag: Items.createBag(),
       monsters: [],
+      props: [],
       groundItems: [],
       particles: [],
       floatTexts: [],

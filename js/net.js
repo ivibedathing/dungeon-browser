@@ -347,7 +347,7 @@
 
     net.interpolatedAt = function (nowMs) {
       const s = net._snaps;
-      const empty = { players: [], monsters: [], projectiles: [], groundItems: [], floor: 1, events: [] };
+      const empty = { players: [], monsters: [], projectiles: [], groundItems: [], props: [], floor: 1, events: [] };
       if (!s.length) return empty;
 
       const target = nowMs - INTERP_DELAY;
@@ -376,6 +376,7 @@
         monsters: lerpList(a.monsters, b.monsters, f),
         projectiles: lerpList(a.projectiles, b.projectiles, f),
         groundItems: b.groundItems.map((g) => Object.assign({}, g)), // items don't move; no lerp
+        props: (b.props || []).map((pr) => Object.assign({}, pr)), // static; no lerp
         events: [],
       };
     };
@@ -387,6 +388,7 @@
         monsters: snapshot.monsters.map((e) => Object.assign({}, e)),
         projectiles: snapshot.projectiles.map((e) => Object.assign({}, e)),
         groundItems: snapshot.groundItems.map((e) => Object.assign({}, e)),
+        props: (snapshot.props || []).map((e) => Object.assign({}, e)),
         events: [],
       };
     }
@@ -471,6 +473,7 @@
         monsters: [],
         projectiles: [],
         groundItems: [],
+        props: [], // server-authoritative breakables, refreshed from each snapshot
         portals: [], // town portals are a Phase 4 co-op concern; empty keeps the renderer happy
         particles: [],
         floatTexts: [],
@@ -545,6 +548,7 @@
       rs.monsters = interp.monsters;
       rs.projectiles = interp.projectiles;
       rs.groundItems = interp.groundItems;
+      rs.props = interp.props;
 
       // Fold the server's authoritative private state into the local hero + HUD.
       // (Position/hp came from reconcileLocal; these are the fields not in the

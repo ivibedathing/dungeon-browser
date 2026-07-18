@@ -54,6 +54,31 @@
   // Monsters per room: base + rand(0..rand) + min(depthCap, floor(depthRate·(f−1))).
   Balance.spawns = { base: 2, rand: 2, depthRate: 0.7, depthCap: 4, championChance: 0.12 };
 
+  // ---- Breakable decorations (furniture, pots, barrels, chests) ----
+  // Smashable clutter that dresses rooms and coughs up minor loot. Non-blocking:
+  // they never touch collision or pathing. Each non-entry room gets rand(min..max)
+  // props; `chestChance` rolls a rarer treasure chest on top. Per break, gold /
+  // item / potion are INDEPENDENT rolls (a chest can yield several at once), and
+  // gold scales with floor like monster gold: amount ×(1 + goldFloorScale·(f−1)).
+  Balance.props = {
+    perRoom: { min: 1, max: 4 },
+    chestChance: 0.14,
+    goldFloorScale: 0.3,
+    // hp = damage to shatter · size = draw radius (px) · weight = spawn-pool share
+    // (0 = never rolled by pickType; placed only by chestChance) · gold = pre-scale
+    // range · *Chance = independent per-break drop odds · guaranteeMagic excludes
+    // common when an item drops.
+    types: {
+      pot: { hp: 4, size: 9, weight: 26, minFloor: 1, gold: [2, 6], goldChance: 0.3, itemChance: 0.02, potionChance: 0.05 },
+      crate: { hp: 10, size: 12, weight: 20, minFloor: 1, gold: [3, 8], goldChance: 0.34, itemChance: 0.05, potionChance: 0.05 },
+      barrel: { hp: 10, size: 11, weight: 20, minFloor: 1, gold: [3, 8], goldChance: 0.34, itemChance: 0.05, potionChance: 0.06 },
+      table: { hp: 12, size: 14, weight: 14, minFloor: 1, gold: [2, 5], goldChance: 0.2, itemChance: 0.04, potionChance: 0.03 },
+      chair: { hp: 6, size: 10, weight: 12, minFloor: 1, gold: [1, 4], goldChance: 0.12, itemChance: 0.02, potionChance: 0.02 },
+      stand: { hp: 12, size: 12, weight: 8, minFloor: 2, gold: [2, 6], goldChance: 0.18, itemChance: 0.14, potionChance: 0.02 },
+      chest: { hp: 20, size: 13, weight: 0, minFloor: 1, gold: [8, 18], goldChance: 1, itemChance: 0.85, potionChance: 0.3, guaranteeMagic: true, chest: true },
+    },
+  };
+
   // ---- Blacksmith ----
   Balance.upgrade = { dmgPerPlus: 0.08, maxPlus: 10 };
 

@@ -58,6 +58,7 @@
       pt.vy *= 1 - 3 * dt;
     }
     state.particles = state.particles.filter((pt) => pt.t < pt.life);
+    if (state.props) for (const prop of state.props) prop.hitT = Math.max(0, prop.hitT - dt);
     for (const msg of state.messages) msg.t += dt;
     state.messages = state.messages.filter((msg) => msg.t < 7);
 

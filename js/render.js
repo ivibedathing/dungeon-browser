@@ -8,6 +8,7 @@ if (typeof window === 'undefined') {
   require('./render/fixtures.js');
   require('./render/monster.js');
   require('./render/player.js');
+  require('./render/props.js');
   require('./render/draw.js');
   module.exports = require('./render/core.js');
 }

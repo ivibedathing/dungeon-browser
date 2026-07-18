@@ -3,6 +3,7 @@
 (function () {
   const Skills = typeof window !== 'undefined' ? window.Skills : require('../skills.js');
   const Quests = typeof window !== 'undefined' ? window.Quests : require('../quests.js');
+  const Props = typeof window !== 'undefined' ? window.Props : require('../props.js');
   const Game = typeof window !== 'undefined' ? window.Game : require('./core.js');
   const G = Game._;
   const { DROPS } = G;
@@ -40,6 +41,81 @@
   }
   Game.dropLoot = dropLoot; // exported for balance wiring tests and the future server
 
+  // ---- Breakable decorations ----
+
+  // Palette for the shatter burst, keyed by prop type. Chests glint gold.
+  const PROP_DEBRIS = {
+    pot: '#9a7250', crate: '#a9824c', barrel: '#8a6a3e', table: '#7a5636',
+    chair: '#7a5636', stand: '#8b8b93', chest: '#d8b24a',
+  };
+
+  function dropPropLoot(state, prop) {
+    const scatter = () => (state.srand() - 0.5) * 22;
+    for (const d of Props.rollLoot(prop.type, state.floor, state.srand)) {
+      if (d.kind === 'gold') {
+        state.groundItems.push({ id: state.nextId++, kind: 'gold', amount: d.amount, x: prop.x + scatter(), y: prop.y + scatter() });
+      } else {
+        state.groundItems.push({ id: state.nextId++, kind: 'item', item: d.item, x: prop.x + scatter(), y: prop.y + scatter() });
+      }
+    }
+  }
+
+  function breakProp(state, prop) {
+    const i = state.props.indexOf(prop);
+    if (i === -1) return; // already shattered this frame (e.g. a fireball's overlapping hits)
+    state.props.splice(i, 1);
+    const debris = PROP_DEBRIS[prop.type] || '#9a824c';
+    G.burst(state, prop.x, prop.y, debris, Props.isChest(prop.type) ? 22 : 14, 130);
+    G.sfx(state, 'smash');
+    if (Props.isChest(prop.type)) {
+      G.floatText(state, prop.x, prop.y - prop.size - 6, 'Chest!', '#ffd84d', 15);
+      state.shake = Math.min(6, state.shake + 2);
+    }
+    dropPropLoot(state, prop);
+  }
+
+  // Chip a prop's hp; shatter it at zero. Cosmetic damage numbers stay off props
+  // (they'd clutter the screen mid-swing) — the hit flash and debris read as feedback.
+  function hitProp(state, prop, dmg) {
+    prop.hp -= dmg;
+    prop.hitT = 0.12;
+    G.burst(state, prop.x, prop.y, PROP_DEBRIS[prop.type] || '#9a824c', 3, 70);
+    if (prop.hp <= 0) breakProp(state, prop);
+  }
+
+  // `dmg` may be a number or a thunk; the thunk is called only on an actual hit, so
+  // a whiffed swing never draws from the loot RNG and leaves monster drops untouched.
+  const rollDmg = (dmg) => (typeof dmg === 'function' ? dmg() : dmg);
+
+  // Props caught inside an explosion/whirl radius. Returns true if any was hit,
+  // so callers can fold prop smashing into their existing "did I connect?" juice.
+  G.damagePropsInRadius = function (state, x, y, radius, dmg) {
+    let any = false;
+    for (const prop of [...state.props]) {
+      const reach = radius + prop.size;
+      if (U.dist2(x, y, prop.x, prop.y) >= reach * reach) continue;
+      if (!G.lineOfSight(state.dungeon.grid, x, y, prop.x, prop.y)) continue;
+      hitProp(state, prop, rollDmg(dmg));
+      any = true;
+    }
+    return any;
+  };
+
+  // Props swept by a melee arc (or the 360° whirl, as an arc of width 2π).
+  G.damagePropsInArc = function (state, px, py, facing, arc, radius, dmg) {
+    let any = false;
+    for (const prop of [...state.props]) {
+      const reach = radius + prop.size * 0.5;
+      if (!U.pointInArc(prop.x, prop.y, px, py, facing, arc, reach)) continue;
+      if (!G.lineOfSight(state.dungeon.grid, px, py, prop.x, prop.y)) continue;
+      hitProp(state, prop, rollDmg(dmg));
+      any = true;
+    }
+    return any;
+  };
+
+  G.hitProp = hitProp; // exported for the projectile sweep and tests
+
   // ---- Combat ----
 
   function hitMonster(state, m, dmg, stats, kbAngle, kbForce) {
@@ -76,6 +152,7 @@
         hitAny = true;
         hitMonster(state, m, rollDamage(state, stats), stats, Math.atan2(m.y - p.y, m.x - p.x), stats.kb);
       }
+      if (G.damagePropsInArc(state, p.x, p.y, p.facing, stats.arc, stats.radius, () => rollDamage(state, stats))) hitAny = true;
       if (hitAny) {
         state.shake = Math.min(6, state.shake + 2);
         G.sfx(state, 'hit');
@@ -115,6 +192,7 @@
       if (!G.lineOfSight(state.dungeon.grid, pr.x, pr.y, m.x, m.y)) continue;
       hitMonster(state, m, pr.dmg, stats, Math.atan2(m.y - pr.y, m.x - pr.x), 140);
     }
+    G.damagePropsInRadius(state, pr.x, pr.y, pr.aoe, pr.dmg);
   }
 
   G.updateProjectiles = function updateProjectiles(state, dt) {
@@ -141,6 +219,22 @@
               explode(state, pr);
             } else {
               hitMonster(state, m, pr.dmg, Entities.effectiveStats(p), Math.atan2(pr.vy, pr.vx), 90);
+              G.sfx(state, 'hit');
+            }
+            break;
+          }
+        }
+        // Arrows shatter a prop on contact; fireballs burst against it (the blast
+        // then smashes it and anything else in radius via explode's prop pass).
+        if (!dead) {
+          for (const prop of state.props) {
+            const reach = prop.size + 4;
+            if (U.dist2(pr.x, pr.y, prop.x, prop.y) >= reach * reach) continue;
+            dead = true;
+            if (pr.kind === 'fireball') {
+              explode(state, pr);
+            } else {
+              G.hitProp(state, prop, pr.dmg);
               G.sfx(state, 'hit');
             }
             break;
@@ -229,6 +323,7 @@
         hitAny = true;
         hitMonster(state, m, dmg, stats, Math.atan2(m.y - p.y, m.x - p.x), stats.kb * 1.2);
       }
+      if (G.damagePropsInArc(state, p.x, p.y, p.facing, Math.PI * 2, reachBase, () => Math.max(1, Math.round(stats.damage * (0.8 + 0.15 * rank) * (0.85 + state.srand() * 0.3))))) hitAny = true;
       if (hitAny) {
         state.shake = Math.min(8, state.shake + 3);
         G.sfx(state, 'hit');

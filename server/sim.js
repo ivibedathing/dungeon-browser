@@ -9,6 +9,7 @@
 
 globalThis.U = require('../js/util.js');
 globalThis.Items = require('../js/items.js');
+globalThis.Props = require('../js/props.js');
 globalThis.Skills = require('../js/skills.js');
 globalThis.Entities = require('../js/entities.js');
 globalThis.Dungeon = require('../js/dungeon.js');
