@@ -4,7 +4,9 @@
   const Sfx = {};
 
   let ctx = null;
-  let master = null;
+  let master = null; // everything lands here → compressor → speakers
+  let sfxBus = null; // blips only; Sfx.setMuted rides this gain
+  let musicBus = null; // the sequencer's bus (music.js), muted independently
   let muted = false;
   let noiseBuf = null;
   const lastPlay = {};
@@ -15,11 +17,30 @@
     if (!AC) return;
     ctx = new AC();
     master = ctx.createGain();
-    master.gain.value = muted ? 0 : 0.5;
+    master.gain.value = 1;
     const comp = ctx.createDynamicsCompressor();
     master.connect(comp);
     comp.connect(ctx.destination);
+    // Two sibling buses, so silencing effects never silences the score and vice
+    // versa. Music sits lower in the mix — it is a bed, not a foreground event.
+    sfxBus = ctx.createGain();
+    sfxBus.gain.value = muted ? 0 : 0.5;
+    sfxBus.connect(master);
+    musicBus = ctx.createGain();
+    musicBus.gain.value = 0.34;
+    musicBus.connect(master);
   }
+
+  // Shared plumbing for music.js: one AudioContext for the whole game, so a single
+  // unlock gesture covers both and the two buses mix through the same compressor.
+  Sfx.context = function () {
+    ensure();
+    return ctx;
+  };
+  Sfx.musicBus = function () {
+    ensure();
+    return musicBus;
+  };
 
   // Browsers require a user gesture before audio starts; main.js calls this on the first one.
   Sfx.unlock = function () {
@@ -29,7 +50,7 @@
 
   Sfx.setMuted = function (m) {
     muted = !!m;
-    if (master) master.gain.value = muted ? 0 : 0.5;
+    if (sfxBus) sfxBus.gain.value = muted ? 0 : 0.5;
   };
   Sfx.isMuted = () => muted;
   Sfx.toggle = function () {
@@ -66,7 +87,7 @@
     g.gain.setValueAtTime(0.0001, t0);
     g.gain.linearRampToValueAtTime(peak, t0 + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + attack + decay);
-    g.connect(master);
+    g.connect(sfxBus);
     return g;
   }
 
