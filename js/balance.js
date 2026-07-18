@@ -126,7 +126,7 @@
   };
 
   // ---- Blacksmith ----
-  Balance.upgrade = { dmgPerPlus: 0.08, maxPlus: 10 };
+  Balance.upgrade = { dmgPerPlus: 0.08, defPerPlus: 0.08, maxPlus: 10 };
 
   // ---- Quest board ----
   // Rewards are priced in "work units", where one unit ≈ killing a floor-1

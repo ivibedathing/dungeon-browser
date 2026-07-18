@@ -190,10 +190,18 @@ Champion/boss drops re-roll with common excluded.
 
 ## Blacksmith upgrades
 
-+8% weapon damage per level, max +10.
+Borin hones every worn slot but the ring: weapons gain +8% damage per level, armour
+(helmet, armor, gloves, pants, boots) gains +8% defense per level. Max +10 either way.
+Honing scales that one stat only — a piece's Life/Mana/attack-speed/move rolls and its
+affixes are untouched, so upgrades can't compound a lucky roll. Rings take no plus.
+
+Armour defense is summed exact across the worn set and rounded once, not rounded per
+piece — base rolls are only 1–9, so per-piece rounding would swallow whole levels (a
+def-1 boot would read 1 until +7). A fully honed set of def-1 commons goes 5 → 9.
+Tooltips show one decimal while a piece's honed defense is fractional.
 Cost = round((15 + ilvl·5) × rarityMult × 1.5^plus), rarityMult common 1 / magic 1.6 / rare 2.4 / unique 4.
 
-| weapon | +0→+1 | +4→+5 | +9→+10 |
+| item | +0→+1 | +4→+5 | +9→+10 |
 | --- | ---: | ---: | ---: |
 | common (floor 1) | 20g | 101g | 769g |
 | rare (floor 5) | 96g | 486g | 3691g |
