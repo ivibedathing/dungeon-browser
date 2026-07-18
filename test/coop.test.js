@@ -270,3 +270,73 @@ test('solo: 0 HP is immediate permadeath (unchanged)', () => {
   assert.equal(state.dead, true, 'run ends');
   assert.ok(!state.player.down, 'no down state in solo');
 });
+
+// ---- Task 6: shared descent + party teleport ----
+
+function toStairs(state, pl) {
+  pl.x = (state.dungeon.stairs.x + 0.5) * 32;
+  pl.y = (state.dungeon.stairs.y + 0.5) * 32;
+}
+
+test('solo descends instantly on the stairs (unchanged)', () => {
+  const state = Game.newRun(90);
+  toStairs(state, state.player);
+  const before = state.floor;
+  const next = Game.update(state, {}, 0.05);
+  assert.equal(next.floor, before + 1, 'solo advanced a floor immediately');
+});
+
+test('party: one hero on the stairs arms a countdown, not an instant descent', () => {
+  const state = Game.newRun(91);
+  const p0 = state.player;
+  addAlly(state, 'p1', p0.x + 400, p0.y); // ally off the stairs
+  toStairs(state, p0);
+  const before = state.floor;
+  Game.update(state, {}, 0.05);
+  assert.equal(state.floor, before, 'did not descend yet');
+  assert.ok(typeof state.descendT === 'number' && state.descendT > 0, 'countdown armed');
+});
+
+test('party: the countdown elapsing descends and teleports the WHOLE party to the entry', () => {
+  const state = Game.newRun(92);
+  const p0 = state.player;
+  const p1 = addAlly(state, 'p1', p0.x + 400, p0.y);
+  const before = state.floor;
+  let descended = false;
+  for (let t = 0; t < 260 && !descended; t++) {
+    state.monsters = []; // isolate the countdown from combat interference
+    toStairs(state, p0); // park p0 on the stairs BEFORE the tick (only p0 → countdown path)
+    Game.update(state, {}, 0.05);
+    if (state.floor > before) descended = true; // don't re-park after: descent fanned everyone to entry
+  }
+  assert.equal(state.floor, before + 1, 'party descended after the countdown');
+  const ex = (state.dungeon.entry.x + 0.5) * 32;
+  const ey = (state.dungeon.entry.y + 0.5) * 32;
+  assert.ok(Math.hypot(p0.x - ex, p0.y - ey) < 48, 'p0 at the new entry');
+  assert.ok(Math.hypot(p1.x - ex, p1.y - ey) < 48, 'p1 teleported to the new entry too');
+});
+
+test('party: all heroes on the stairs descend instantly', () => {
+  const state = Game.newRun(93);
+  const p0 = state.player;
+  const p1 = addAlly(state, 'p1', 0, 0);
+  toStairs(state, p0);
+  toStairs(state, p1);
+  const before = state.floor;
+  Game.update(state, {}, 0.05);
+  assert.equal(state.floor, before + 1, 'a fully-assembled party descends at once');
+});
+
+test('a portal is owner-tagged and travel moves the whole party', () => {
+  const state = Game.newRun(94);
+  const p0 = state.player;
+  const p1 = addAlly(state, 'p1', p0.x + 200, p0.y);
+  Game._.castPortal(state, p1);
+  assert.equal(state.portals[0].ownerId, 'p1', 'gate tagged with its caster');
+  const gate = state.portals[0];
+  Game._.travel(state, gate);
+  assert.ok(state.inTown, 'party entered town');
+  // both players are near the town entry, not at their old dungeon spots
+  const near = (pl) => Math.hypot(pl.x - state.player.x, pl.y - state.player.y) < 60;
+  assert.ok(near(p1), 'the ally travelled to town with the party');
+});

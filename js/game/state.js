@@ -88,9 +88,23 @@
     state.questing = false;
     state.boardOpen = false;
     state.flow = { field: null, t: 0 };
+    // Party teleport: fan EVERY player around the entry (same layout as Room.join) so
+    // a shared descent moves the whole party, not just players[0]. A downed hero is
+    // brought back up at the entry with the party. Solo = one player at entry center.
+    const roster = state.players && state.players.length ? state.players : [state.player];
+    const ex = (dungeon.entry.x + 0.5) * TS;
+    const ey = (dungeon.entry.y + 0.5) * TS;
+    roster.forEach((pl, i) => {
+      const spread = roster.length > 1 ? 14 : 0;
+      const a = (i / Math.max(1, roster.length)) * Math.PI * 2;
+      pl.x = ex + Math.cos(a) * spread;
+      pl.y = ey + Math.sin(a) * spread;
+      pl.down = false;
+      pl.downT = 0;
+      pl.reviveT = 0;
+    });
     const p = state.player;
-    p.x = (dungeon.entry.x + 0.5) * TS;
-    p.y = (dungeon.entry.y + 0.5) * TS;
+    state.descendT = null; // no descent armed on a fresh floor
     state.cam = { x: p.x, y: p.y };
     state.fade = { t: 0, dur: 1.6, label: `Floor ${state.floor} — ${dungeon.theme.name}` };
   }

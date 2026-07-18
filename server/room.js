@@ -240,6 +240,7 @@ class Room {
       you: id,
       ack: this.ack(id),
       floor: s.floor,
+      descendT: typeof s.descendT === 'number' ? round2(s.descendT) : null, // shared descent banner
       // The requesting player's own private state — the fields the HUD reads that
       // aren't in the shared entity lists and that the client can't derive. Gold is
       // now per-player (Phase 4 instanced bags): read this player's own bag.

@@ -8,8 +8,18 @@
 
   Game.PORTAL_CD = 15;
 
-  G.castPortal = function castPortal(state) {
-    const p = state.player;
+  // Fan the whole party around a point (so a party teleport never stacks heroes).
+  function placeParty(state, cx, cy) {
+    const roster = state.players && state.players.length ? state.players : [state.player];
+    roster.forEach((pl, i) => {
+      const spread = roster.length > 1 ? 16 : 0;
+      const a = (i / Math.max(1, roster.length)) * Math.PI * 2;
+      pl.x = cx + Math.cos(a) * spread;
+      pl.y = cy + Math.sin(a) * spread;
+    });
+  }
+
+  G.castPortal = function castPortal(state, p = state.player) {
     if (state.inTown) {
       G.message(state, 'The portal magic fizzles here — you are already safe.', '#8fa8d0');
       return;
@@ -25,7 +35,8 @@
       x = p.x;
       y = p.y;
     }
-    state.portals = [{ x, y, kind: 'town', armT: 0.5 }];
+    // Owner-tagged so the UI can show whose gate it is; any player may cast one.
+    state.portals = [{ x, y, kind: 'town', armT: 0.5, ownerId: p.id }];
     G.burst(state, x, y, '#7fb8ff', 22, 130);
     G.sfx(state, 'portal');
     G.message(state, 'A shimmering portal to town tears open.', '#7fb8ff');
@@ -74,8 +85,7 @@
           armT: 1.0,
         });
       });
-      p.x = (town.entry.x + 0.5) * TS;
-      p.y = (town.entry.y + 2.5) * TS;
+      placeParty(state, (town.entry.x + 0.5) * TS, (town.entry.y + 2.5) * TS);
       state.cam = { x: p.x, y: p.y };
       state.fade = { t: 0, dur: 1.4, label: 'Ashfall Camp' };
       G.message(state, 'You step through into the quiet of Ashfall Camp.', '#c9b37e');
@@ -99,8 +109,7 @@
       state.trading = false;
       state.stash = null;
       state.portals = [];
-      p.x = st.portalPos.x;
-      p.y = st.portalPos.y;
+      placeParty(state, st.portalPos.x, st.portalPos.y);
       state.cam = { x: p.x, y: p.y };
       state.fade = { t: 0, dur: 1.4, label: `Floor ${state.floor}` };
       G.message(state, 'The portal snaps shut behind you.', '#7fb8ff');

@@ -215,7 +215,7 @@
     }
 
     // Town portal skill (cooldown/arming ticks live in updateWorld).
-    if (input.pressed.has('portal')) G.castPortal(state);
+    if (input.pressed.has('portal')) G.castPortal(state, p);
     const gate = state.portals.find((po) => po.armT <= 0 && U.dist2(p.x, p.y, po.x, po.y) < 20 * 20);
     if (gate) {
       G.travel(state, gate);
@@ -264,15 +264,26 @@
       }
     }
 
-    // Stairs.
-    const ptx = Math.floor(p.x / TS);
-    const pty = Math.floor(p.y / TS);
-    if (state.dungeon.grid[pty] && state.dungeon.grid[pty][ptx] === Dungeon.TILE.STAIRS_DOWN) {
-      G.descend(state);
-      return true;
+    // Stairs: solo descends instantly (unchanged feel). In a party the descent is a
+    // shared countdown handled in updateWorld, so a lone player stepping on doesn't
+    // yank the whole party down — see the descent logic there.
+    if (state.players.length <= 1) {
+      const ptx = Math.floor(p.x / TS);
+      const pty = Math.floor(p.y / TS);
+      if (state.dungeon.grid[pty] && state.dungeon.grid[pty][ptx] === Dungeon.TILE.STAIRS_DOWN) {
+        G.descend(state);
+        return true;
+      }
     }
 
     return false;
+  }
+
+  // Is a player standing on the stairs-down tile?
+  function onStairs(state, pl) {
+    const tx = Math.floor(pl.x / TS);
+    const ty = Math.floor(pl.y / TS);
+    return state.dungeon.grid[ty] && state.dungeon.grid[ty][tx] === Dungeon.TILE.STAIRS_DOWN;
   }
 
   // World systems: everything that runs once per frame regardless of player count.
@@ -418,6 +429,27 @@
       if (typeof Save !== 'undefined') {
         Save.updateRecords(state);
         Save.clear();
+      }
+    }
+
+    // Shared descent (party): while ≥1 living hero stands on the stairs the party
+    // countdown ticks; it fires at 0, or instantly once EVERY living hero is on the
+    // stairs. Step off and it resets. (Solo descends instantly in updatePlayerActions.)
+    if (!state.dead && !state.inTown && state.players.length > 1) {
+      const living = state.players.filter((pl) => !pl.dead && !pl.down);
+      const onIt = living.filter((pl) => onStairs(state, pl));
+      if (onIt.length > 0 && living.length > 0) {
+        if (onIt.length === living.length) {
+          G.descend(state);
+          return state;
+        }
+        state.descendT = (state.descendT == null ? C.descendCountdown : state.descendT) - dt;
+        if (state.descendT <= 0) {
+          G.descend(state);
+          return state;
+        }
+      } else {
+        state.descendT = null;
       }
     }
 
