@@ -205,7 +205,8 @@
   let cursor = 0; // index into compiled.events
   let loopBase = 0; // context time the current pass through the loop started at
   let muted = false;
-  let pending = null; // song queued behind a crossfade
+  let pending = null; // song queued behind a crossfade, or behind the audio unlock
+  let fadeToken = 0; // invalidates superseded crossfade timers
 
   const LOOKAHEAD_MS = 25; // how often the scheduler wakes
   const HORIZON = 0.2; // how far ahead of the clock it schedules
@@ -375,12 +376,26 @@
       fn();
     } catch (e) {
       if (typeof console !== 'undefined') console.warn('music:', e);
+      // Drop the track rather than just the scheduler: leaving `current` set would
+      // make the frame loop's next play(sameName) a no-op, and the score would stay
+      // dead until the scene changed. Cleared, the next call restarts it.
       stopScheduler();
+      current = null;
+      compiled = null;
+      pending = null;
     }
   }
 
   function scheduleAhead() {
-    if (!ctx || !compiled) return;
+    if (!ctx || !compiled || !compiled.events.length || compiled.len <= 0) return;
+    // A backgrounded tab throttles setInterval to ~once a minute while the audio
+    // clock runs on. Resync to the top of the loop rather than walking through
+    // every missed event to catch up.
+    if (ctx.currentTime - nextTime > 1) {
+      cursor = 0;
+      loopBase = ctx.currentTime;
+      nextTime = loopBase + compiled.events[0].t * compiled.step;
+    }
     const until = ctx.currentTime + HORIZON;
     while (nextTime < until) {
       const ev = compiled.events[cursor];
@@ -449,9 +464,20 @@
     if (!SONGS[name]) return;
     if (!ensure()) return;
     if (ctx.state !== 'running') {
-      // Pre-gesture: remember the intent and start on unlock.
+      // Pre-gesture, or the OS/tab suspended us. Remember the intent; the running
+      // branch below picks it up as soon as the context comes back.
       pending = name;
       return;
+    }
+    // The context is running and something was queued while it wasn't. This is the
+    // normal boot path — ctx.resume() is asynchronous, so the state usually flips
+    // some frames after the unlock gesture, and the frame loop lands here first.
+    // Without this, `pending` would latch and the score would never start.
+    if (pending && !current) {
+      const queued = pending;
+      pending = null;
+      beginSong(queued);
+      if (queued === name) return;
     }
     if (current === name || pending === name) return;
     if (!current) {
@@ -461,20 +487,25 @@
     // Crossfade: duck the old track out, then swap. Notes already scheduled ride
     // the fade down, so the handover is smooth rather than a hard cut.
     pending = name;
+    const token = ++fadeToken;
     bus.gain.cancelScheduledValues(ctx.currentTime);
     bus.gain.setValueAtTime(bus.gain.value, ctx.currentTime);
     bus.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + FADE);
     setTimeout(() => {
+      // A newer fade supersedes this one; letting a stale timer fire would cut the
+      // live fade short mid-ramp and click.
+      if (token !== fadeToken) return;
       const next = pending;
       pending = null;
       if (!next) return;
       stopScheduler();
       beginSong(next);
     }, FADE * 1000);
-  };
+  }
 
   Music.stop = function () {
     if (!bus || !current) return;
+    fadeToken++; // any crossfade in flight is now moot
     bus.gain.cancelScheduledValues(ctx.currentTime);
     bus.gain.setValueAtTime(bus.gain.value, ctx.currentTime);
     bus.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + FADE);
@@ -487,14 +518,23 @@
   };
 
   // The first user gesture unlocks the shared AudioContext; anything Music.play
-  // asked for before that starts here.
+  // asked for before that starts here. ctx.resume() resolves asynchronously, so
+  // start off the promise rather than reading ctx.state on the next line — it is
+  // usually still 'suspended' there. (playImpl also recovers a queued track, so a
+  // browser that never settles the promise still gets music.)
   Music.unlock = function () {
     if (!ensure()) return;
-    if (ctx.state === 'running' && pending && !current) {
+    const start = () => {
+      if (ctx.state !== 'running' || !pending || current) return;
       const next = pending;
       pending = null;
-      beginSong(next);
-    }
+      guard(() => beginSong(next));
+    };
+    if (ctx.state === 'suspended' && ctx.resume) {
+      const p = ctx.resume();
+      if (p && p.then) p.then(start, () => {});
+      else start();
+    } else start();
   };
 
   Music.setMuted = function (m) {

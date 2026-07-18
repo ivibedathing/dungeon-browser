@@ -4,9 +4,8 @@
   const Sfx = {};
 
   let ctx = null;
-  let master = null; // everything lands here → compressor → speakers
-  let sfxBus = null; // blips only; Sfx.setMuted rides this gain
-  let musicBus = null; // the sequencer's bus (music.js), muted independently
+  let master = null; // the effects chain: every blip → compressor → speakers
+  let musicBus = null; // music.js's own bus to the speakers, muted independently
   let muted = false;
   let noiseBuf = null;
   const lastPlay = {};
@@ -17,22 +16,22 @@
     if (!AC) return;
     ctx = new AC();
     master = ctx.createGain();
-    master.gain.value = 1;
+    master.gain.value = muted ? 0 : 0.5;
     const comp = ctx.createDynamicsCompressor();
     master.connect(comp);
     comp.connect(ctx.destination);
-    // Two sibling buses, so silencing effects never silences the score and vice
-    // versa. Music sits lower in the mix — it is a bed, not a foreground event.
-    sfxBus = ctx.createGain();
-    sfxBus.gain.value = muted ? 0 : 0.5;
-    sfxBus.connect(master);
+    // The effects chain above is untouched, so blips sound exactly as they did
+    // before music existed. The score gets its own path to the speakers rather than
+    // sharing that compressor — routed through it, a loud passage of music would
+    // pump the gain reduction and duck every effect. Music sits lower in the mix
+    // regardless: it is a bed, not a foreground event.
     musicBus = ctx.createGain();
-    musicBus.gain.value = 0.34;
-    musicBus.connect(master);
+    musicBus.gain.value = 0.28;
+    musicBus.connect(ctx.destination);
   }
 
   // Shared plumbing for music.js: one AudioContext for the whole game, so a single
-  // unlock gesture covers both and the two buses mix through the same compressor.
+  // unlock gesture covers both effects and the score.
   Sfx.context = function () {
     ensure();
     return ctx;
@@ -50,7 +49,7 @@
 
   Sfx.setMuted = function (m) {
     muted = !!m;
-    if (sfxBus) sfxBus.gain.value = muted ? 0 : 0.5;
+    if (master) master.gain.value = muted ? 0 : 0.5;
   };
   Sfx.isMuted = () => muted;
   Sfx.toggle = function () {
@@ -87,7 +86,7 @@
     g.gain.setValueAtTime(0.0001, t0);
     g.gain.linearRampToValueAtTime(peak, t0 + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + attack + decay);
-    g.connect(sfxBus);
+    g.connect(master);
     return g;
   }
 
