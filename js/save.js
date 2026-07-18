@@ -33,11 +33,83 @@
     }
   }
 
+  // ---- Chunk-granular explored ----
+  // Per-tile fog over a 2048x2048 world would be ~700 KB of base64 written every
+  // four seconds, which is not a reasonable thing to put in localStorage. The
+  // world is remembered at CHUNK granularity instead: 1024 bits, 128 bytes, ~172
+  // characters. The accepted consequence is that the world map fills in chunk by
+  // chunk across sessions rather than tile by tile.
+  Save.CHUNK_BITS = 1024;
+
+  Save.packChunks = function (map) {
+    const bytes = new Uint8Array(Save.CHUNK_BITS / 8);
+    for (const k of Object.keys(map || {})) {
+      if (!map[k]) continue;
+      const i = Number(k);
+      if (!(i >= 0 && i < Save.CHUNK_BITS)) continue;
+      bytes[i >> 3] |= 1 << (i & 7);
+    }
+    let s = '';
+    for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    try {
+      return btoa(s);
+    } catch {
+      return '';
+    }
+  };
+
+  Save.unpackChunks = function (str) {
+    const out = {};
+    if (!str) return out;
+    try {
+      const bin = atob(str);
+      for (let i = 0; i < Save.CHUNK_BITS; i++) {
+        if (bin.charCodeAt(i >> 3) & (1 << (i & 7))) out[i] = true;
+      }
+    } catch {
+      /* a corrupt blob just means an unexplored map, never a failed load */
+    }
+    return out;
+  };
+
+  // What the world remembers between sessions. The terrain, the roads, the
+  // mouths and the waystones all regenerate from the seed, so only the parts
+  // that are the PLAYER's — where they have been, what they have found, what
+  // they have woken and what they have killed — need writing down.
+  Save.worldSnapshot = function (state) {
+    const w = state.world;
+    if (!w) return null;
+    const pois = [];
+    for (const k of Object.keys(w.pois || {})) {
+      const p = w.pois[k];
+      if (!p.found && !p.unlocked) continue;
+      pois.push({ k: Number(k), f: !!p.found, u: !!p.unlocked });
+    }
+    const bosses = [];
+    for (const k of Object.keys(w.bosses || {})) {
+      const b = w.bosses[k];
+      if (!b.seen && !b.slain) continue;
+      bosses.push({ k: Number(k), s: !!b.seen, d: !!b.slain });
+    }
+    return { visited: Save.packChunks(w.visited), pois, bosses };
+  };
+
   // Only durable progress is saved. The dungeon itself regenerates deterministically
   // from (runSeed, floor); monsters respawn on load — the floor restarts fresh.
   Save.snapshot = function (state) {
     const p = state.player;
+    // Where on the continent to put the hero on load. Underground, that is the
+    // mouth they climbed down, so a reload surfaces them rather than losing them.
+    const pos = state.inWorld
+      ? { x: state.player.x, y: state.player.y }
+      : state.stash && state.stash.overworld && state.stash.portalPos
+        ? { x: state.stash.portalPos.x, y: state.stash.portalPos.y }
+        : null;
     return {
+      worldSeed: state.worldSeed,
+      inWorld: !!state.inWorld,
+      worldPos: pos,
+      world: Save.worldSnapshot(state),
       version: 1,
       runSeed: state.runSeed,
       floor: state.floor,

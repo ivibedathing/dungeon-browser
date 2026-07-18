@@ -255,6 +255,50 @@
       }
     }
     makeFloorState(state);
+
+    // Resume on the continent. Every save lands here: a new-format save restores
+    // the world it recorded, and a LEGACY dungeon save — written before the world
+    // existed, so carrying no world block at all — walks out of Ashfall Camp with
+    // its hero, level, bag and quests intact. The hero is the durable thing; the
+    // place they stand is regenerated either way.
+    if (typeof Game.enterWorld === 'function') {
+      if (typeof data.worldSeed === 'number') state.worldSeed = data.worldSeed >>> 0;
+      const saved = data.world;
+      const World = typeof window !== 'undefined' ? window.World : require('../world.js');
+      const world = World.create(state.worldSeed);
+      World.ensureChunk(world, World.TOWN_CX, World.TOWN_CY);
+      const camp = World.town(world);
+      state.world = {
+        world,
+        seed: state.worldSeed,
+        active: new Set(),
+        visited: saved && typeof Save !== 'undefined' ? Save.unpackChunks(saved.visited) : {},
+        pois: {},
+        bosses: {},
+        cleared: {},
+        respawn: {},
+        t: 0,
+      };
+      // Rehydrate discovery against freshly regenerated POIs, so a save can never
+      // resurrect a landmark the generator no longer places.
+      for (const rec of (saved && saved.pois) || []) {
+        const cx = rec.k % World.CHUNKS;
+        const cy = Math.floor(rec.k / World.CHUNKS);
+        World.ensureChunk(world, cx, cy);
+        const poi = world.pois[rec.k];
+        if (!poi) continue;
+        state.world.pois[rec.k] = { ...poi, found: !!rec.f, unlocked: !!rec.u };
+      }
+      for (const rec of (saved && saved.bosses) || []) {
+        state.world.bosses[rec.k] = { x: 0, y: 0, name: 'A world boss', seen: !!rec.s, slain: !!rec.d };
+      }
+      const TSl = TS;
+      const at = data.worldPos
+        ? { x: Math.floor(data.worldPos.x / TSl), y: Math.floor(data.worldPos.y / TSl) }
+        : { x: camp.entry.x, y: camp.entry.y + 4 };
+      Game.enterWorld(state, at);
+    }
+
     const fullStats = Entities.effectiveStats(p);
     p.hp = Math.min(typeof sp.hp === 'number' ? sp.hp : fullStats.maxHP, fullStats.maxHP);
     p.mana = Math.min(typeof sp.mana === 'number' ? sp.mana : fullStats.maxMana, fullStats.maxMana);

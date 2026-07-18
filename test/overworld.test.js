@@ -13,6 +13,8 @@ globalThis.Entities = require('../js/entities.js');
 globalThis.Quests = require('../js/quests.js');
 globalThis.Dungeon = require('../js/dungeon.js');
 globalThis.World = require('../js/world.js');
+const Save = require('../js/save.js');
+globalThis.Save = Save;
 const Game = require('../js/game.js');
 const Balance = require('../js/balance.js');
 const World = globalThis.World;
@@ -693,4 +695,158 @@ test('a new solo run begins outside Ashfall Camp, not on a dungeon floor', () =>
   const fromCamp = Math.hypot(tx - camp.entry.x, ty - camp.entry.y);
   assert.ok(fromCamp < 12, `started ${fromCamp.toFixed(0)} tiles from camp — that is not "outside Ashfall"`);
   assert.ok(fromCamp > 0, 'started on top of the camp entry');
+});
+
+// ---- Phase 5: persistence ----
+
+function memStorage() {
+  const box = {};
+  return {
+    getItem: (k) => (k in box ? box[k] : null),
+    setItem: (k, v) => {
+      box[k] = String(v);
+    },
+    removeItem: (k) => {
+      delete box[k];
+    },
+  };
+}
+
+test('the explored map packs to a 1024-bit chunk set and back', () => {
+  const set = { 0: true, 1: true, 63: true, 512: true, 1023: true, 77: false };
+  const packed = Save.packChunks(set);
+  // 1024 bits = 128 bytes, which base64 encodes in 172 characters. Per-tile fog
+  // at 2048^2 would be ~700 KB — the whole reason this is chunk-granular.
+  assert.ok(packed.length < 200, `packed to ${packed.length} chars`);
+  const back = Save.unpackChunks(packed);
+  for (const k of [0, 1, 63, 512, 1023]) assert.equal(back[k], true, `chunk ${k} was lost`);
+  assert.equal(back[77], undefined, 'a false chunk came back set');
+  assert.equal(back[500], undefined);
+  assert.equal(Object.keys(back).length, 5);
+});
+
+test('unpackChunks survives a corrupt blob rather than failing the load', () => {
+  assert.deepEqual(Save.unpackChunks(''), {});
+  assert.deepEqual(Save.unpackChunks(null), {});
+  assert.deepEqual(Save.unpackChunks('!!!not base64!!!'), {});
+});
+
+test('the world round-trips: seed, position, explored chunks, and every discovery', () => {
+  Save._storage = memStorage();
+  let s = Game.newSoloRun(31337);
+  const world = s.world.world;
+  World.ensureAround(world, World.TOWN_CX, World.TOWN_CY, 5);
+
+  // Find something, wake something, and walk around a little.
+  const mouthEntry = Object.entries(world.pois).find(([, p]) => p.kind === 'mouth');
+  const stoneEntry = Object.entries(world.pois).find(([, p]) => p.kind === 'waystone');
+  assert.ok(mouthEntry && stoneEntry, 'need a mouth and a waystone near home');
+  s.player.x = (mouthEntry[1].x + 0.5) * TS;
+  s.player.y = (mouthEntry[1].y + 0.5) * TS - 5 * TS;
+  s = pump(s, 2);
+  s.player.x = (stoneEntry[1].x + 0.5) * TS;
+  s.player.y = (stoneEntry[1].y + 0.5) * TS;
+  s = pump(s, 2);
+  s.bag.gold = 412;
+  Entities.gainXP(s.player, Entities.xpForLevel(1));
+
+  const visitedBefore = Object.keys(s.world.visited).length;
+  assert.ok(visitedBefore > 0);
+  const posBefore = { x: s.player.x, y: s.player.y };
+
+  Save.write(s);
+  const restored = Game.fromSave(Save.load());
+
+  assert.equal(restored.inWorld, true);
+  assert.equal(restored.worldSeed, s.worldSeed, 'world seed lost');
+  assert.equal(restored.bag.gold, 412);
+  assert.ok(Math.hypot(restored.player.x - posBefore.x, restored.player.y - posBefore.y) < 3 * TS,
+    'resumed somewhere other than where the save was written');
+  assert.equal(Object.keys(restored.world.visited).length, visitedBefore, 'the explored chunk set was lost');
+  assert.equal(restored.world.pois[mouthEntry[0]].found, true, 'a found mouth was forgotten');
+  assert.equal(restored.world.pois[stoneEntry[0]].unlocked, true, 'an unlocked waystone was forgotten');
+  assert.equal(G.unlockedWaystones(restored).length, G.unlockedWaystones(s).length);
+
+  // And the restored world is the same world, tile for tile.
+  const rw = restored.world.world;
+  for (const [tx, ty] of [[1030, 1030], [1100, 990], [900, 1200]]) {
+    const c = World.chunkOf(tx, ty);
+    World.ensureChunk(rw, c.cx, c.cy);
+    World.ensureChunk(world, c.cx, c.cy);
+    assert.equal(rw.grid[ty][tx], world.grid[ty][tx], `tile ${tx},${ty} regenerated differently`);
+  }
+});
+
+test('a save written underground surfaces at the mouth it went down', () => {
+  Save._storage = memStorage();
+  let s = Game.newSoloRun(31337);
+  const world = s.world.world;
+  World.ensureAround(world, World.TOWN_CX, World.TOWN_CY, 5);
+  const mouth = Object.values(world.pois).find((p) => p.kind === 'mouth');
+  s.player.x = (mouth.x + 0.5) * TS;
+  s.player.y = (mouth.y + 0.5) * TS;
+  s = pump(s, 2);
+  assert.equal(s.inWorld, false, 'never went down');
+
+  Save.write(s);
+  const restored = Game.fromSave(Save.load());
+  assert.equal(restored.inWorld, true, 'a reload should surface, not strand you underground');
+  const dist = Math.hypot(restored.player.x - (mouth.x + 0.5) * TS, restored.player.y - (mouth.y + 0.5) * TS);
+  assert.ok(dist < 4 * TS, `surfaced ${(dist / TS).toFixed(1)} tiles from the mouth`);
+});
+
+test('a legacy dungeon save — written before the world existed — walks out of Ashfall', () => {
+  Save._storage = memStorage();
+  // Exactly the shape Save.snapshot produced before this feature: no worldSeed,
+  // no worldPos, no world block at all.
+  const legacy = {
+    version: 1,
+    runSeed: 4242,
+    floor: 7,
+    kills: 88,
+    time: 900,
+    milestones: [5],
+    quests: [],
+    player: {
+      name: 'Oldtimer',
+      shirt: '#4a5578',
+      level: 6,
+      xp: 40,
+      baseMaxHP: 160,
+      baseMaxMana: 70,
+      baseDamage: 10,
+      hp: 120,
+      mana: 30,
+      skillPoints: 2,
+      skills: {},
+      equip: {},
+      stats: null,
+    },
+    bag: { slots: [], belt: [], gold: 999, potions: {} },
+  };
+  const restored = Game.fromSave(legacy);
+  // The hero is the durable thing and survives intact.
+  assert.equal(restored.player.name, 'Oldtimer');
+  assert.equal(restored.player.level, 6);
+  assert.equal(restored.bag.gold, 999);
+  assert.equal(restored.kills, 88);
+  assert.deepEqual(restored.milestones, [5]);
+  // And they resume on the continent, standing at Ashfall.
+  assert.equal(restored.inWorld, true, 'a legacy save must migrate into the overworld');
+  const camp = World.town(restored.world.world);
+  const tx = Math.floor(restored.player.x / TS);
+  const ty = Math.floor(restored.player.y / TS);
+  assert.ok(Math.hypot(tx - camp.entry.x, ty - camp.entry.y) < 12, 'a legacy save did not land at Ashfall');
+  assert.ok(D.isWalkable(restored.dungeon.grid[ty][tx]), 'landed inside terrain');
+  assert.equal(Object.keys(restored.world.pois).length, 0, 'a legacy save has nothing discovered yet');
+});
+
+test('a save can never resurrect a landmark the generator no longer places', () => {
+  Save._storage = memStorage();
+  const s = Game.newSoloRun(31337);
+  // A discovery record for a chunk that holds no POI at all.
+  const snap = Save.snapshot(s);
+  snap.world = { visited: '', pois: [{ k: World.chunkKey(5, 5), f: true, u: true }], bosses: [] };
+  const restored = Game.fromSave(snap);
+  assert.equal(restored.world.pois[World.chunkKey(5, 5)], undefined, 'a phantom landmark was restored');
 });
