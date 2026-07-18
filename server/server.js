@@ -13,6 +13,8 @@ const http = require('node:http');
 const path = require('node:path');
 const { WebSocketServer } = require('ws');
 const { createStatic } = require('./static.js');
+const { createMetrics } = require('./metrics.js');
+const { createLogger } = require('./logger.js');
 const Protocol = require('./protocol.js');
 const { Room } = require('./room.js');
 const Character = require('./character.js');
@@ -42,11 +44,27 @@ function createServer(opts = {}) {
   const ready = Promise.resolve(store.init ? store.init() : undefined);
   const onError = opts.onError || ((err) => console.error('[server]', err && err.message ? err.message : err));
 
+  // Observability (Phase 5): injectable so tests stay deterministic. Reading metrics
+  // never mutates sim state.
+  const metrics = opts.metrics || createMetrics();
+  const logger = opts.logger || createLogger();
+  const perf = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
   // Serve the client and the WebSocket on ONE origin: an http listener handles static
   // GETs, and the ws server rides its `upgrade` events. `serveStatic: false` (or a
   // missing client root) leaves the http server answering 404s — the ws still works.
+  // `GET /metrics` (JSON) and `GET /healthz` are answered before the static handler.
   const staticHandler = opts.serveStatic === false ? null : createStatic({ root: path.join(__dirname, '..') });
   const httpServer = http.createServer((req, res) => {
+    const urlPath = (req.url || '/').split('?')[0];
+    if (req.method === 'GET' && urlPath === '/healthz') {
+      res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok');
+      return;
+    }
+    if (req.method === 'GET' && urlPath === '/metrics') {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(metrics.snapshot()));
+      return;
+    }
     if (staticHandler && staticHandler(req, res)) return;
     res.writeHead(404, { 'Content-Type': 'text/plain' }).end('not found');
   });
@@ -79,6 +97,8 @@ function createServer(opts = {}) {
   // A kick is a courtesy error frame then a close; the close code tells a client
   // library it was policy, not a network fault.
   function kick(ws, reason) {
+    metrics.kick(reason);
+    if (reason === Protocol.ERR.BAD_MESSAGE || reason === Protocol.ERR.RATE_LIMIT) metrics.incr('msgsDropped');
     send(ws, { t: 'error', reason, fatal: true });
     ws.close(4000, reason);
   }
@@ -271,6 +291,7 @@ function createServer(opts = {}) {
       const valid = Protocol.validateClient(decoded.msg);
       if (!valid.ok) return kick(ws, Protocol.ERR.BAD_MESSAGE);
       const msg = valid.msg;
+      metrics.incr('msgsIn');
 
       // Three budgets: a fast one for the 30 Hz input stream, a strict one for
       // control messages, and the strictest for auth attempts (each costs a scrypt).
@@ -333,15 +354,22 @@ function createServer(opts = {}) {
   // ---- The heartbeat: one interval ticks every room and fans out snapshots. ----
   const stepMs = 1000 / tickHz;
   const loop = setInterval(() => {
+    const t0 = perf();
     const t = now();
     for (const room of rooms.values()) room.tick(t);
     // Send each connected, joined peer its own AOI-filtered snapshot.
+    let players = 0;
     for (const ws of wss.clients) {
       const peer = ws._peer;
       if (!peer || !peer.room || !peer.id || ws.readyState !== ws.OPEN) continue;
+      players++;
       const snap = peer.room.snapshotFor(peer.id);
       if (snap) ws.send(Protocol.encode(snap));
     }
+    metrics.observeTick(perf() - t0);
+    metrics.incr('ticksTotal');
+    metrics.setGauge('rooms', rooms.size);
+    metrics.setGauge('players', players);
   }, stepMs);
   if (loop.unref) loop.unref(); // the tick loop must not keep a test process alive
 
@@ -369,7 +397,7 @@ function createServer(opts = {}) {
     if (store.close) await store.close();
   }
 
-  const api = { wss, httpServer, rooms, store, ready, close, tickHz, get port() { const a = httpServer.address(); return a ? a.port : port; } };
+  const api = { wss, httpServer, rooms, store, metrics, logger, ready, close, tickHz, get port() { const a = httpServer.address(); return a ? a.port : port; } };
   return api;
 }
 
