@@ -4,6 +4,7 @@
 'use strict';
 
 require('./sim.js'); // ensures Entities/Items globals are loaded in node
+const Schema = require('./schema.js');
 
 // A brand-new character: a starter hero, empty bag, floor 1. Mirrors what
 // Save.snapshot(Game.newRun(...)) would produce, without spinning a whole run.
@@ -40,7 +41,12 @@ function starterBlob(name, shirt) {
 // the sim expects — the same shape Room.freshPlayer produces, so the sim can't tell
 // a loaded hero from a new one apart from its stats. Mirrors Game.fromSave's restore.
 function playerFromCharacter(blob, id) {
-  const sp = (blob && blob.player) || {};
+  // Defensive load: sanitize/clamp the blob (drop injected stats, junk items, unknown
+  // skills). A structurally broken blob becomes a fresh starter rather than a crash or
+  // a partially-trusted character. A legitimate blob passes through unchanged.
+  const v = Schema.validateCharacter(blob);
+  const clean = v.ok ? v.sanitized : Schema.validateCharacter(starterBlob('Wanderer')).sanitized;
+  const sp = clean.player;
   const p = Entities.newPlayer({ name: sp.name, shirt: sp.shirt });
   p.id = id;
   p.dead = false;
@@ -69,9 +75,9 @@ function playerFromCharacter(blob, id) {
   const stats = Entities.effectiveStats(p);
   p.hp = Math.min(typeof sp.hp === 'number' ? sp.hp : stats.maxHP, stats.maxHP);
   p.mana = Math.min(typeof sp.mana === 'number' ? sp.mana : stats.maxMana, stats.maxMana);
-  // Per-player bag (Phase 4): each seat carries its own loaded bag. The save path
+  // Per-player bag (Phase 4): each seat carries its own sanitized bag. The save path
   // persists p.bag directly, so co-op no longer needs the host/frozen-bag split.
-  if (blob && blob.bag) p.bag = blob.bag;
+  p.bag = clean.bag;
   return p;
 }
 
