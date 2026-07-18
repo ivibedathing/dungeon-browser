@@ -190,6 +190,9 @@
     p.baseDamage = sp.baseDamage || 0;
     p.skillPoints = sp.skillPoints || 0;
     p.skills = sp.skills || {};
+    // Absent on every save written before the main quest existed: derive act I
+    // rather than leaving it undefined.
+    p.mainQuest = Quests.mainFromSave(sp.mainQuest);
     if (sp.equip) {
       for (const key of Object.keys(p.equip)) {
         p.equip[key] = sp.equip[key] || null;

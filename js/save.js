@@ -56,6 +56,9 @@
         skillPoints: p.skillPoints,
         skills: p.skills,
         equip: p.equip,
+        // Per-character and dies with the hero; death clears the save entirely.
+        // Normalized by Quests.mainFromSave on load, so a missing field is fine.
+        mainQuest: p.mainQuest,
       },
       bag: state.bag,
     };
