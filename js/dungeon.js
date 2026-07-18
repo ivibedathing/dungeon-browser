@@ -3,6 +3,7 @@
   const U = typeof require === 'function' ? require('./util.js') : window.U;
   const Entities = typeof require === 'function' ? require('./entities.js') : window.Entities;
   const Balance = typeof require === 'function' ? require('./balance.js') : window.Balance;
+  const Props = typeof require === 'function' ? require('./props.js') : window.Props;
 
   const D = {};
 
@@ -288,6 +289,34 @@
       spawns[U.randInt(rng, 0, spawns.length - 1)].champion = true;
     }
 
+    // Breakable clutter: furniture, pots, barrels, and the occasional chest. Placed
+    // like spawns (random interior FLOOR tiles, clear of the entry) but non-blocking,
+    // so they never disturb collision or the flow field. Tiles already holding a
+    // spawn or another prop are skipped, keeping one smashable per tile.
+    const props = [];
+    const taken = new Set(spawns.map((s) => s.x + ',' + s.y));
+    const placeOn = (room, type) => {
+      for (let t = 0; t < 20; t++) {
+        const x = U.randInt(rng, room.x + 1, room.x + room.w - 2);
+        const y = U.randInt(rng, room.y + 1, room.y + room.h - 2);
+        if (grid[y][x] !== D.TILE.FLOOR) continue;
+        if (Math.hypot(x - entry.x, y - entry.y) <= 5) continue;
+        const key = x + ',' + y;
+        if (taken.has(key)) continue;
+        taken.add(key);
+        props.push({ x, y, type });
+        return;
+      }
+    };
+    const PR = Balance.props;
+    for (let ri = 1; ri < rooms.length; ri++) {
+      const room = rooms[ri];
+      if (boss && room.x === boss.room.x && room.y === boss.room.y) continue; // keep the arena clear
+      const count = U.randInt(rng, PR.perRoom.min, PR.perRoom.max);
+      for (let k = 0; k < count; k++) placeOn(room, Props.pickType(rng, floor));
+      if (rng() < PR.chestChance) placeOn(room, 'chest');
+    }
+
     // Ambush swarms: from SW.minFloor on, a few roomy chambers hide a pack that
     // bursts in when the hero reaches the middle. Spawn tiles are precomputed here
     // so triggering is a pure lookup — solo and server produce the same swarm.
@@ -349,6 +378,7 @@
       spawns,
       ambushes,
       torches,
+      props,
       theme: D.themeFor(floor),
       floor,
       boss,

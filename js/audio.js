@@ -90,6 +90,10 @@
       noiseHit(t, { peak: 0.38, decay: 0.22, freq: 600, f1: 150 });
       tone('sine', 120, 38, t, 0.26, 0.45);
     },
+    smash: (t) => {
+      noiseHit(t, { peak: 0.34, attack: 0.002, decay: 0.16, freq: 1300, f1: 220 });
+      tone('square', 220, 80, t, 0.08, 0.16, 0.004);
+    },
     hurt: (t) => {
       tone('sawtooth', 190, 90, t, 0.16, 0.26);
       noiseHit(t, { peak: 0.12, decay: 0.12, freq: 700 });

@@ -276,6 +276,11 @@ class Room {
       groundItems: s.groundItems
         .filter((g) => this.inAOI(me, g.x, g.y))
         .map((g) => ({ id: g.id, kind: g.kind, x: round2(g.x), y: round2(g.y), amount: g.amount, item: g.item || null })),
+      // Standing breakables in view. Broken props leave the list, so clients simply
+      // stop drawing them; the local dungeon regen supplies nothing here.
+      props: (s.props || [])
+        .filter((pr) => this.inAOI(me, pr.x, pr.y))
+        .map((pr) => ({ id: pr.id, type: pr.type, x: round2(pr.x), y: round2(pr.y), size: pr.size, hitT: round3(pr.hitT) })),
       events: this.eventsFor(me),
     };
   }

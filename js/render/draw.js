@@ -44,6 +44,17 @@
       R.drawTorch(ctx, state, t);
     }
 
+    // Breakable decorations sit on the floor beneath actors and loot.
+    if (state.props) {
+      for (const prop of state.props) {
+        const px = Math.floor(prop.x / TS);
+        const py = Math.floor(prop.y / TS);
+        if (px < x0 || px > x1 || py < y0 || py > y1) continue;
+        if (!state.explored[py] || !state.explored[py][px] || !R.isVisible(state, px, py)) continue;
+        R.drawProp(ctx, state, prop);
+      }
+    }
+
     // Ground items.
     const p = state.player;
     for (const g of state.groundItems) {
