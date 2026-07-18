@@ -158,12 +158,32 @@ client can't cheat a server number* — is delivered and test-pinned.
   intent *emit* path (online equip/buy UI → `net.sendIntent`) is likewise a browser wiring
   follow-up; the authoritative server side is complete.
 
-## Phase 5 — Hardening & deploy (~1 session)
+## Phase 5 — Hardening & deploy ✅ *(landed 2026-07-18, branch `phase5-hardening-deploy` merged to `main`)*
 
-- Fuzz the protocol (random/mutated payloads must never crash a room).
-- Soak: 50 rooms × 4 bots × 10 min, memory flat, tick under budget.
-- Metrics endpoint (rooms, players, tick ms, dropped msgs), structured logs.
-- Dockerfile + run instructions; TLS termination notes; README "Host your own server".
+> Plan: `docs/superpowers/plans/2026-07-18-phase5-hardening-deploy.md`
+
+- **Fuzz:** `server/fuzz-gen.js` seeded generators shared by `test/fuzz.test.js` (CI slice)
+  and `tool/fuzz.mjs` (manual sweep). `decode`/`validateClient` proven throw-free over
+  thousands of mutated/random frames; a Room fed fuzz frames + valid-but-adversarial input
+  with join/leave churn ticks cleanly with no orphan input buffers.
+- **Observability:** `server/metrics.js` (counters/gauges + bounded tick ring avg/max/p95 +
+  per-reason kicks; reads never mutate sim) and `server/logger.js` (one JSON line per event,
+  **secrets never echoed**). `GET /metrics` (JSON) + `GET /healthz` on the http listener.
+- **Soak:** `test/soak.test.js` (in-process virtual-clock CI slice) + `tool/soak.mjs` (full
+  50×4×10min, heap slope + tick-p95 budget). Measured 20×4×1min: tick p95 ≈ 4 ms (budget
+  33 ms), heap flat.
+- **Backpressure & lifecycle:** fan-out drops a backed-up peer's snapshot (metered);
+  `maxRooms`/`maxConnections` → clean `server_full` kick; `srv.drain()` flushes a final save
+  for every live player on SIGTERM before close.
+- **Deploy:** non-root, healthchecked `Dockerfile` (`--omit=dev`); `docker-compose.yml`
+  (Postgres + server, volume-persisted); README **"Host your own server"** (one-origin serving,
+  env vars, `/metrics`+`/healthz`, TLS-termination proxy). `test/deploy.test.js` guards drift.
+- Exit met: **325 tests** (+16), test-first, no gameplay drift, solo untouched.
+
+**This closes the multiplayer roadmap — Phases 0–5 all shipped.** Deliberate future work
+(not open phases): Phase 4.5 follow-ups (render-cache draw-through, service worker, snapshot
+refs, client intent-emit UI), multi-process room sharding, per-player town instances, and
+making the client's port assumption configurable for a single-origin `:443` deploy.
 
 ## Dependency graph
 
