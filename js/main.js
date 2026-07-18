@@ -295,6 +295,15 @@
   window.addEventListener('keydown', unlockAudio, { once: true });
   window.addEventListener('mousedown', unlockAudio, { once: true });
 
+  // Preload (Phase 4.5 Track A): warm the noise buffer and try optional real assets in
+  // the background while the menu is up. Every step is non-required with a procedural
+  // fallback (Boot's guarantee), so a failure — or file:// with no fetch — changes nothing.
+  if (typeof Boot !== 'undefined') {
+    Boot.step('audio', () => Sfx.warm());
+    if (typeof Assets !== 'undefined') Boot.step('assets', () => Assets.load('assets/manifest.json'));
+    Boot.run().catch(() => {});
+  }
+
   window.addEventListener('beforeunload', () => {
     if (mode === 'solo' && state && !state.dead) Save.write(state);
   });
