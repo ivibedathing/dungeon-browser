@@ -14,6 +14,7 @@
       state.invOpen = false;
       state.treeOpen = false;
       state.boardOpen = false;
+      state.statsOpen = false;
     }
     if (state.dead) return;
 
@@ -102,7 +103,7 @@
       if (item) state.hover = { item, x: mx, y: my, context: 'bag', compare: !!input.keys.ctrl };
       if (input.mouse.click && item) {
         if (state.trading) Game.sellFromBag(state, i);
-        else if (state.smithing && item.slot === 'weapon') Game.smithUpgrade(state, 'bag', i);
+        else if (state.smithing && Items.isSmithable(item)) Game.smithUpgrade(state, 'bag', i);
         else Game.bagClick(state, i);
       }
       if (input.mouse.rclick && item) Game.bagDrop(state, i);
@@ -125,19 +126,22 @@
       if (!I.inRect(mx, my, L.equip[slot])) continue;
       const item = state.player.equip[slot];
       if (item) state.hover = { item, x: mx, y: my, context: 'equipped' };
-      if (input.mouse.click && item && slot === 'weapon' && state.smithing) {
-        Game.smithUpgrade(state, 'equip', 'weapon');
-      }
-      if (input.mouse.click && item && slot !== 'weapon') {
-        // Unequip into the bag (weapon stays — you always need something to swing).
-        if (state.bag.slots.indexOf(null) !== -1) {
-          state.player.equip[slot] = null;
-          Items.addItem(state.bag, item);
-          Game.message(state, `Unequipped ${item.name}.`, '#9aa');
-          const maxHP = Entities.effectiveStats(state.player).maxHP;
-          state.player.hp = Math.min(state.player.hp, maxHP);
-        } else {
-          Game.message(state, 'No room in your inventory.', '#ff5c4d');
+      if (input.mouse.click && item) {
+        // At the anvil a click hones the piece instead of stripping it off — the
+        // ring is the one worn slot Borin won't touch, so it still unequips.
+        if (state.smithing && Items.isSmithable(item)) {
+          Game.smithUpgrade(state, 'equip', slot);
+        } else if (slot !== 'weapon') {
+          // Unequip into the bag (weapon stays — you always need something to swing).
+          if (state.bag.slots.indexOf(null) !== -1) {
+            state.player.equip[slot] = null;
+            Items.addItem(state.bag, item);
+            Game.message(state, `Unequipped ${item.name}.`, '#9aa');
+            const maxHP = Entities.effectiveStats(state.player).maxHP;
+            state.player.hp = Math.min(state.player.hp, maxHP);
+          } else {
+            Game.message(state, 'No room in your inventory.', '#ff5c4d');
+          }
         }
       }
     }

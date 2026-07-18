@@ -12,6 +12,7 @@ const path = require('node:path');
 
 globalThis.U = require('../js/util.js');
 globalThis.Items = require('../js/items.js');
+globalThis.Stats = require('../js/stats.js');
 globalThis.Props = require('../js/props.js');
 globalThis.Skills = require('../js/skills.js');
 globalThis.Entities = require('../js/entities.js');

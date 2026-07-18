@@ -304,6 +304,10 @@ class Room {
           slamWindup: m.telegraphT > 0 ? round3(m.slamWindup || 0.8) : 0,
           phaseIdx: m.phaseIdx || 0,
           phaseCount: m.phases ? m.phases.length : 0,
+          // Telegraph charge (0..1) for the wind-up cue; the client derives which
+          // cue from `type`, so no behavior tag needs to ride the wire.
+          tel: m.tel ? round2(m.tel) : 0,
+
         })),
       projectiles: s.projectiles
         .filter((pr) => this.inAOI(me, pr.x, pr.y))

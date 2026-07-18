@@ -117,6 +117,41 @@
         ctx.lineTo(4, 2.5);
         ctx.fill();
         ctx.restore();
+      } else if (pr.kind === 'bolt') {
+        // Hostile caster bolt: a violet mote with a short tail.
+        ctx.save();
+        ctx.translate(pr.x, pr.y);
+        ctx.rotate(pr.angle);
+        ctx.fillStyle = 'rgba(180,107,255,0.4)';
+        ctx.beginPath();
+        ctx.moveTo(-10, 0);
+        ctx.lineTo(0, -2.5);
+        ctx.lineTo(0, 2.5);
+        ctx.fill();
+        const bg = ctx.createRadialGradient(0, 0, 0.5, 0, 0, 6);
+        bg.addColorStop(0, '#f0e0ff');
+        bg.addColorStop(0.5, '#b46bff');
+        bg.addColorStop(1, 'rgba(120,60,200,0)');
+        ctx.fillStyle = bg;
+        ctx.beginPath();
+        ctx.arc(0, 0, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      } else if (pr.kind === 'thrown') {
+        // A tumbling steel weapon: spins independent of flight angle.
+        ctx.save();
+        ctx.translate(pr.x, pr.y);
+        ctx.rotate(state.time * 18 + pr.x * 0.05);
+        ctx.fillStyle = '#8a6b3a';
+        ctx.fillRect(-1.3, -7, 2.6, 14);
+        ctx.fillStyle = '#cfd6dd';
+        ctx.beginPath();
+        ctx.moveTo(-1.3, -7);
+        ctx.lineTo(5, -6);
+        ctx.lineTo(4, -1);
+        ctx.lineTo(-1.3, -2);
+        ctx.fill();
+        ctx.restore();
       } else {
         const fg = ctx.createRadialGradient(pr.x, pr.y, 1, pr.x, pr.y, 11);
         fg.addColorStop(0, '#fff3c0');

@@ -27,6 +27,27 @@
     bat: { hp: 15, dmg: 5, speed: 108, xp: 9, minFloor: 1, weight: 22, size: 9, color: '#9a7ab8', aggro: 345, attackRange: 24, attackCd: 0.7 },
     brute: { hp: 68, dmg: 15, speed: 48, xp: 26, minFloor: 1, weight: 12, size: 16, color: '#b5624d', aggro: 255, attackRange: 34, attackCd: 1.4 },
     wraith: { hp: 24, dmg: 11, speed: 95, xp: 20, minFloor: 3, weight: 18, size: 12, color: '#8fd0e8', aggro: 370, attackRange: 28, attackCd: 0.8 },
+    // ---- Melee variants (Phase 3): all reuse the chase-and-lunge AI ----
+    // Ghoul: a tankier, meaner zombie that shows up a floor or two down.
+    ghoul: { hp: 56, dmg: 11, speed: 62, xp: 21, minFloor: 2, weight: 16, size: 14, color: '#6f8f74', aggro: 275, attackRange: 30, attackCd: 1.2 },
+    // Hound: fast quadruped that hunts in loose packs and snaps quickly.
+    hound: { hp: 22, dmg: 8, speed: 132, xp: 13, minFloor: 2, weight: 18, size: 10, color: '#9a6b48', aggro: 340, attackRange: 26, attackCd: 0.8 },
+    // Spider: skittering ambusher — low HP, fast, quick bite.
+    spider: { hp: 17, dmg: 7, speed: 118, xp: 11, minFloor: 3, weight: 15, size: 9, color: '#5a4a6a', aggro: 330, attackRange: 24, attackCd: 0.7 },
+    // Armored skeleton: a slow, heavily-plated line-holder with real HP.
+    skeleton_knight: { hp: 64, dmg: 13, speed: 54, xp: 26, minFloor: 4, weight: 12, size: 13, color: '#b8c2cf', aggro: 260, attackRange: 32, attackCd: 1.3 },
+    // Ogre: a bigger, deadlier brute for the deeper floors.
+    ogre: { hp: 118, dmg: 23, speed: 44, xp: 42, minFloor: 5, weight: 8, size: 20, color: '#8a7a4d', aggro: 250, attackRange: 38, attackCd: 1.6 },
+    // ---- Behavior archetypes (Phase 4): non-melee AI + hostile projectiles ----
+    // `behavior` selects the AI branch; `attackCd` is that behavior's action cooldown.
+    // Ranged caster: kites and lobs a magic bolt after a short, dodgeable cast.
+    cultist: { hp: 26, dmg: 10, speed: 70, xp: 22, minFloor: 4, weight: 14, size: 11, color: '#b57edc', aggro: 380, attackRange: 30, attackCd: 2.0, behavior: 'ranged' },
+    // Exploder: rushes in, lights a fuse on contact, and detonates in an AoE.
+    bomber: { hp: 30, dmg: 24, speed: 92, xp: 18, minFloor: 5, weight: 12, size: 12, color: '#d98b3f', aggro: 360, attackRange: 30, attackCd: 1.0, behavior: 'exploder' },
+    // Charger: winds up, then dashes in a straight line for heavy contact damage.
+    gargoyle: { hp: 46, dmg: 18, speed: 60, xp: 26, minFloor: 6, weight: 12, size: 13, color: '#8a8f98', aggro: 340, attackRange: 30, attackCd: 3.0, behavior: 'charger' },
+    // Summoner: hangs back and raises weak skeletal minions up to a cap.
+    necromancer: { hp: 40, dmg: 8, speed: 66, xp: 30, minFloor: 6, weight: 10, size: 12, color: '#6f8f6f', aggro: 360, attackRange: 30, attackCd: 5.0, behavior: 'summoner' },
     // Swarmling: never in the random pool (weight 0) — only ambush swarms spawn it.
     // Frail and cheap, but faster than anything else and hits quick, so a pack
     // that reaches you drains HP in a hurry. Huge aggro: it commits on sight.
@@ -44,6 +65,17 @@
   // carries the threat, outpacing the armor curve (×(1 + 0.18·(f−1))) so defense
   // softens hits at depth without neutralizing them.
   Balance.scaling = { hpLin: 0.3, hpQuad: 0.006, dmgLin: 0.42, xpLin: 0.22 };
+
+  // ---- Behavior tuning (Phase 4) ----
+  // Telegraph windows are deliberately generous so every special is dodgeable. All
+  // ranges/speeds are px or px/s; times are seconds. `tel` (0..1 telegraph charge) is
+  // derived from these and rendered as a wind-up cue in solo and co-op alike.
+  Balance.behaviors = {
+    ranged: { fireRange: 340, castTime: 0.45, boltSpeed: 300, kiteRange: 150 },
+    exploder: { fuseTime: 0.7, blastRadius: 74, blastKb: 220 },
+    charger: { windupTime: 0.5, dashTime: 0.26, dashSpeed: 540, triggerRange: 240, minRange: 60 },
+    summoner: { castTime: 0.6, cap: 4, minionsPerCast: 2, minionType: 'skeleton', kiteRange: 170 },
+  };
 
   Balance.champion = { hp: 2.6, dmg: 1.5, xp: 3, size: 1.35, speed: 1.05 };
 
@@ -143,7 +175,7 @@
   };
 
   // ---- Blacksmith ----
-  Balance.upgrade = { dmgPerPlus: 0.08, maxPlus: 10 };
+  Balance.upgrade = { dmgPerPlus: 0.08, defPerPlus: 0.08, maxPlus: 10 };
 
   // ---- Quest board ----
   // Rewards are priced in "work units", where one unit ≈ killing a floor-1

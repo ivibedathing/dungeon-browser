@@ -32,6 +32,7 @@ function starterBlob(name, shirt) {
       skillPoints: 0,
       skills: {},
       equip: p.equip,
+      stats: Stats.create(),
     },
     bag: Items.createBag(),
   };
@@ -70,6 +71,7 @@ function playerFromCharacter(blob, id) {
   p.baseDamage = sp.baseDamage || 0;
   p.skillPoints = sp.skillPoints || 0;
   p.skills = sp.skills || {};
+  p.stats = Stats.sanitize(sp.stats);
   if (sp.equip) {
     for (const key of Object.keys(p.equip)) p.equip[key] = sp.equip[key] || null;
     if (!p.equip.weapon) p.equip.weapon = Entities.starterWeapon();
@@ -110,6 +112,7 @@ function characterBlob(state, player, bag) {
       skills: p.skills,
       equip: p.equip,
       mainQuest: p.mainQuest || Quests.newMain(),
+      stats: p.stats || Stats.create(),
     },
     bag: bag || state.bag,
   };

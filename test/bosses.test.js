@@ -5,6 +5,7 @@ globalThis.U = require('../js/util.js');
 globalThis.Items = require('../js/items.js');
 globalThis.Skills = require('../js/skills.js');
 globalThis.Bosses = require('../js/bosses.js');
+globalThis.Stats = require('../js/stats.js');
 globalThis.Entities = require('../js/entities.js');
 globalThis.Dungeon = require('../js/dungeon.js');
 const Game = require('../js/game.js');
@@ -112,7 +113,7 @@ test('non-act arena floors keep a plain generic guardian', () => {
     const b = Entities.makeBoss(f);
     assert.ok(b.boss, 'still a boss');
     assert.equal(b.actBoss, undefined, 'not an act boss');
-    assert.equal(b.behavior, undefined, 'plain melee, as it always was');
+    assert.equal(b.behavior, 'melee', 'plain melee default, as it always was — no special archetype');
     assert.equal(b.phases, undefined, 'no phase ladder');
     assert.ok(b.name.length > 3, 'still named');
   }

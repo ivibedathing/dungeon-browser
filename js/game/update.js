@@ -68,6 +68,10 @@
       p.healPool = 0;
     }
     p.mana = Math.min(stats.maxMana, (p.mana || 0) + stats.manaRegen * dt);
+    // Life regeneration from gear (separate from the healPool potion drip above).
+    if (stats.lifeRegen > 0 && p.hp > 0 && p.hp < stats.maxHP) {
+      p.hp = Math.min(stats.maxHP, p.hp + stats.lifeRegen * dt);
+    }
     for (const k of Object.keys(p.skillCd)) p.skillCd[k] = Math.max(0, p.skillCd[k] - dt);
     p.hurtT = Math.max(0, p.hurtT - dt);
     p.attackT = Math.max(0, p.attackT - dt);
@@ -125,11 +129,15 @@
     // Menu toggles and belt keys are local-player UI concerns (clients own these in Phase 2).
     if (localIn.pressed.has('inv')) {
       state.invOpen = !state.invOpen;
-      if (state.invOpen) state.treeOpen = state.boardOpen = false;
+      if (state.invOpen) state.treeOpen = state.boardOpen = state.statsOpen = false;
     }
     if (localIn.pressed.has('tree')) {
       state.treeOpen = !state.treeOpen;
-      if (state.treeOpen) state.invOpen = state.boardOpen = false;
+      if (state.treeOpen) state.invOpen = state.boardOpen = state.statsOpen = false;
+    }
+    if (localIn.pressed.has('stats')) {
+      state.statsOpen = !state.statsOpen;
+      if (state.statsOpen) state.invOpen = state.treeOpen = state.boardOpen = false;
     }
     for (let i = 0; i < 4; i++) {
       if (localIn.pressed.has('belt' + i)) Game.useBelt(state, i);
@@ -143,11 +151,14 @@
       if (!pl.dead && !pl.down) updatePlayerAlways(state, pl, dt);
     }
 
-    if (state.invOpen || state.treeOpen || state.boardOpen) {
+    if (state.invOpen || state.treeOpen || state.boardOpen || state.statsOpen) {
       // Game world pauses while rummaging through bags, pondering the tree, or
       // reading the notices. Returning here also freezes the proximity flags
       // below, so the board stays live while you read it.
       if (state.boardOpen && localIn.pressed.has('interact')) state.boardOpen = false;
+      // E is also the way out of the stall it opened — the frozen `trading` flag
+      // is what tells us the bag was opened by walking up to Grizzle.
+      else if (state.invOpen && state.trading && localIn.pressed.has('interact')) state.invOpen = false;
       return state;
     }
 
@@ -221,9 +232,20 @@
 
     // Movement + dodge, shared verbatim with client-side prediction. The sim owns
     // the juice the client can't: a newly-started roll kicks up dust and a sound.
+    // The tile tally is counted HERE rather than inside predictMovement, because
+    // that runs a second time as client-side prediction and would double-count.
+    const fromTx = Math.floor(p.x / TS);
+    const fromTy = Math.floor(p.y / TS);
     if (Game.predictMovement(state.dungeon.grid, p, input, dt, stats)) {
       G.burst(state, p.x, p.y, '#c9c2b2', 8, 70);
       G.sfx(state, 'dodge');
+    }
+    // One square walked = one tile boundary crossed. A dash across several tiles
+    // in a frame counts the whole distance, not a single step.
+    const toTx = Math.floor(p.x / TS);
+    const toTy = Math.floor(p.y / TS);
+    if (toTx !== fromTx || toTy !== fromTy) {
+      Stats.bump(p, 'tiles', Math.abs(toTx - fromTx) + Math.abs(toTy - fromTy));
     }
 
     // Attack (hold the left mouse button to keep swinging) — never mid-roll. The
@@ -267,11 +289,15 @@
       if (p === state.player && U.dist2(p.x, p.y, qx, qy) < 70 * 70) state.questing = true;
     }
 
-    // Ground pickups — or a quick vendor purchase / anvil strike / read of the
-    // notices in town.
+    // Ground pickups — or opening Grizzle's stall / an anvil strike / a read of
+    // the notices in town.
     if (input.pressed.has('interact')) {
-      if (state.trading && p === state.player) Game.buyPotion(state);
-      else if (state.smithing && p === state.player) Game.upgradeEquipped(state);
+      if (state.trading && p === state.player) {
+        // The stall is the shop strip drawn above the bag, so trading means
+        // opening the inventory; the pause block above closes it on the next E.
+        state.invOpen = true;
+        state.treeOpen = state.boardOpen = false;
+      } else if (state.smithing && p === state.player) Game.upgradeEquipped(state);
       else if (state.questing && p === state.player) state.boardOpen = true;
       else G.tryPickup(state, p);
     }
@@ -280,6 +306,7 @@
     for (const g of [...state.groundItems]) {
       if (g.kind === 'gold' && G.canClaim(g, p) && U.dist2(p.x, p.y, g.x, g.y) < GOLD_MAGNET * GOLD_MAGNET) {
         p.bag.gold += g.amount;
+        Stats.bump(p, 'gold', g.amount);
         state.groundItems.splice(state.groundItems.indexOf(g), 1);
         G.floatText(state, p.x, p.y - 22, `+${g.amount} gold`, '#ffd84d', 12);
         G.sfx(state, 'gold');
@@ -446,8 +473,14 @@
       state.dead = true;
       state.deathT = 0;
       state.shake = 10;
+      Stats.bump(state.player, 'deaths');
       if (typeof Save !== 'undefined') {
         Save.updateRecords(state);
+        // The run is over: fold its tally into the lifetime total before the run
+        // save is cleared. This branch runs once per run, so the run is counted
+        // exactly once. The panel adds the live run on top until this fires.
+        Save.addLifetime(state.player.stats);
+        state.statsBanked = true;
         Save.clear();
       }
     }

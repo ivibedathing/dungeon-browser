@@ -4,6 +4,7 @@
   const Items = typeof require === 'function' ? require('./items.js') : window.Items;
   const Skills = typeof require === 'function' ? require('./skills.js') : window.Skills;
   const Balance = typeof require === 'function' ? require('./balance.js') : window.Balance;
+  const Stats = typeof require === 'function' ? require('./stats.js') : window.Stats;
 
   const E = {};
 
@@ -14,6 +15,7 @@
   E.starterWeapon = () => ({
     slot: 'weapon',
     base: 'Short Sword',
+    family: 'sword',
     name: 'Rusty Sword',
     rarity: 'common',
     color: Items.RARITIES.common.color,
@@ -45,6 +47,9 @@
       // The main quest is per-character and dies with the character: death
       // clears the save, so a run is a pure roguelike attempt at floor 24.
       mainQuest: Bosses.newProgress(),
+      // This run's tally sheet. Per-player like the bag, so in co-op each hero
+      // counts their own swings and spoils.
+      stats: Stats.create(),
     };
   };
 
@@ -80,6 +85,10 @@
       manaRegen: P.manaRegenBase + sk.manaRegen,
       defense: g.defense + sk.defense,
       lifePerKill: g.lifePerKill,
+      manaPerKill: g.manaPerKill || 0,
+      critChance: g.critChance || 0,
+      thorns: g.thorns || 0,
+      lifeRegen: g.lifeRegen || 0,
       xpMult: g.xpMult,
       moveMult: g.moveMult * E.statusMoveMult(player),
     };
@@ -147,6 +156,7 @@
       aggro: base.aggro,
       attackRange: base.attackRange,
       attackCd: base.attackCd,
+      behavior: base.behavior || 'melee',
     };
     if (champion) {
       // Deterministic name (no rng needed) so generation stays reproducible.

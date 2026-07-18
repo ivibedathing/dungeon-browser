@@ -513,6 +513,7 @@
         invOpen: false,
         treeOpen: false,
         boardOpen: false,
+        statsOpen: false,
         trading: false,
         smithing: false,
         questing: false,

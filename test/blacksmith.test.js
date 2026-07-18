@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 globalThis.U = require('../js/util.js');
 globalThis.Items = require('../js/items.js');
+globalThis.Stats = require('../js/stats.js');
 globalThis.Skills = require('../js/skills.js');
 globalThis.Entities = require('../js/entities.js');
 globalThis.Dungeon = require('../js/dungeon.js');
@@ -35,14 +36,14 @@ test('weapons level up: +8% damage per plus, capped at +10, named +N', () => {
   assert.equal(Items.weaponDamage(weapon), 10, 'unupgraded damage is the base roll');
   assert.equal(Items.displayName(weapon), 'Short Sword');
 
-  assert.equal(Items.upgradeWeapon(weapon), true);
+  assert.equal(Items.upgradeItem(weapon), true);
   assert.equal(weapon.plus, 1);
   assert.equal(Items.weaponDamage(weapon), Math.round(10 * 1.08));
   assert.equal(Items.displayName(weapon), '+1 Short Sword');
 
-  for (let i = 0; i < 20; i++) Items.upgradeWeapon(weapon);
+  for (let i = 0; i < 20; i++) Items.upgradeItem(weapon);
   assert.equal(weapon.plus, 10, 'hard cap at +10');
-  assert.equal(Items.upgradeWeapon(weapon), false, 'no upgrades past the cap');
+  assert.equal(Items.upgradeItem(weapon), false, 'no upgrades past the cap');
   assert.equal(Items.weaponDamage(weapon), Math.round(10 * 1.8));
 
   const equip = { weapon };
@@ -100,7 +101,56 @@ test('standing at the anvil enables smithing; E hammers the equipped weapon for 
   assert.equal(weapon.plus, 1, 'no gold, no hammering');
 });
 
-test('smithUpgrade works on bag weapons and refuses non-weapons and the cap', () => {
+test('armour levels up: +8% defense per plus, leaving its other rolls alone', () => {
+  const boots = { slot: 'boots', base: 'Leather Boots', name: 'Leather Boots', rarity: 'common', ilvl: 2, stats: { defense: 20, maxHP: 15, moveMult: 0.1 }, affixes: [] };
+  assert.equal(Items.armorDefense(boots), 20, 'unupgraded defense is the base roll');
+
+  assert.equal(Items.upgradeItem(boots), true);
+  assert.equal(boots.plus, 1);
+  assert.ok(Math.abs(Items.armorDefense(boots) - 20 * 1.08) < 1e-9);
+  assert.equal(Items.displayName(boots), '+1 Leather Boots');
+
+  for (let i = 0; i < 20; i++) Items.upgradeItem(boots);
+  assert.equal(boots.plus, 10, 'hard cap at +10');
+  assert.ok(Math.abs(Items.armorDefense(boots) - 20 * 1.8) < 1e-9);
+  assert.equal(boots.stats.maxHP, 15, 'Life roll untouched by honing');
+  assert.equal(boots.stats.moveMult, 0.1, 'move roll untouched by honing');
+
+  const agg = Items.aggregateStats({ boots });
+  assert.equal(agg.defense, Math.round(20 * 1.8), 'aggregate uses upgraded defense');
+  assert.equal(agg.maxHP, 15);
+});
+
+// Base defense rolls are 1–9, so per-piece rounding would eat whole upgrade
+// levels. Honing a full set of low-defense commons must still move the number.
+test('honing low-defense pieces accumulates instead of rounding away', () => {
+  const piece = (slot) => ({ slot, name: slot, rarity: 'common', ilvl: 1, stats: { defense: 1 }, affixes: [] });
+  const equip = {};
+  for (const slot of ['helmet', 'armor', 'gloves', 'pants', 'boots']) equip[slot] = piece(slot);
+  assert.equal(Items.aggregateStats(equip).defense, 5, 'five def-1 pieces');
+
+  for (const slot of Object.keys(equip)) for (let i = 0; i < 10; i++) Items.upgradeItem(equip[slot]);
+  assert.equal(Items.aggregateStats(equip).defense, 9, 'a fully honed set of def-1 commons: 5 → 9');
+
+  const one = piece('boots');
+  Items.upgradeItem(one);
+  assert.equal(Items.formatDefense(Items.armorDefense(one)), '1.1', 'the tooltip shows the fraction it bought');
+});
+
+test('every worn slot but the ring is smithable', () => {
+  assert.deepEqual(Items.SMITHABLE_SLOTS, ['weapon', 'helmet', 'armor', 'gloves', 'pants', 'boots']);
+  for (const slot of Items.SMITHABLE_SLOTS) {
+    assert.equal(Items.isSmithable({ slot, stats: {} }), true, `${slot} is smithable`);
+  }
+  const ring = { slot: 'ring', name: 'Band', stats: { defense: 5 }, affixes: [] };
+  assert.equal(Items.isSmithable(ring), false, 'Borin will not work a ring');
+  assert.equal(Items.upgradeItem(ring), false, 'rings take no plus');
+  assert.equal(ring.plus, undefined);
+  assert.equal(Items.isSmithable({ slot: 'potion' }), false, 'potions are not gear');
+  assert.equal(Items.isSmithable(null), false);
+});
+
+test('smithUpgrade works on bag gear, and refuses rings and the cap', () => {
   let state = Game.newRun(82);
   state.monsters.length = 0;
   const input = freshInput();
@@ -112,14 +162,18 @@ test('smithUpgrade works on bag weapons and refuses non-weapons and the cap', ()
   const rng = U.mulberry32(4);
   const bow = Items.makeItem(2, rng, { slot: 'weapon', kind: 'bow' });
   const boots = Items.makeItem(2, rng, { slot: 'boots' });
+  const ring = Items.makeItem(2, rng, { slot: 'ring' });
   Items.addItem(state.bag, bow);
   Items.addItem(state.bag, boots);
+  Items.addItem(state.bag, ring);
   state.bag.gold = 100000;
 
   const bowIdx = state.bag.slots.indexOf(bow);
   assert.equal(Game.smithUpgrade(state, 'bag', bowIdx), true, 'bag bow upgraded');
   assert.equal(bow.plus, 1);
-  assert.equal(Game.smithUpgrade(state, 'bag', state.bag.slots.indexOf(boots)), false, 'boots are not smithable');
+  assert.equal(Game.smithUpgrade(state, 'bag', state.bag.slots.indexOf(boots)), true, 'bag boots upgraded');
+  assert.equal(boots.plus, 1);
+  assert.equal(Game.smithUpgrade(state, 'bag', state.bag.slots.indexOf(ring)), false, 'rings are not smithable');
 
   bow.plus = 10;
   assert.equal(Game.smithUpgrade(state, 'bag', bowIdx), false, 'cap respected');

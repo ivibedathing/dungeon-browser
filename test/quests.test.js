@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 
 globalThis.U = require('../js/util.js');
 globalThis.Items = require('../js/items.js');
+globalThis.Stats = require('../js/stats.js');
 globalThis.Entities = require('../js/entities.js');
 globalThis.Quests = require('../js/quests.js');
 globalThis.Dungeon = require('../js/dungeon.js');

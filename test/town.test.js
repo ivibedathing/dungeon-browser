@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 globalThis.U = require('../js/util.js');
 globalThis.Items = require('../js/items.js');
+globalThis.Stats = require('../js/stats.js');
 globalThis.Entities = require('../js/entities.js');
 globalThis.Dungeon = require('../js/dungeon.js');
 const Game = require('../js/game.js');
@@ -133,7 +134,7 @@ test('the healing well restores the player to full', () => {
   assert.equal(state.player.hp, Entities.effectiveStats(state.player).maxHP, 'healed to full');
 });
 
-test('vendor sells a potion on E and buys items for gold', () => {
+test('E opens and closes the vendor stall, which sells potions and buys items', () => {
   let state = Game.newRun(13);
   state.monsters.length = 0;
   const input = freshInput();
@@ -148,8 +149,18 @@ test('vendor sells a potion on E and buys items for gold', () => {
   input.pressed.add('interact');
   state = Game.update(state, input, 1 / 60);
   input.pressed.clear();
+  assert.equal(state.invOpen, true, 'E opened the stall');
+  assert.equal(state.trading, true, 'trade range stays frozen while the stall is open');
+
+  // Buying the potion is now the stall's job, not the E key's.
+  assert.equal(Game.buyPotion(state), true);
   assert.ok(state.bag.belt[0] && state.bag.belt[0].slot === 'potion', 'bought a potion into the belt');
   assert.ok(state.bag.gold < 500, 'gold spent');
+
+  input.pressed.add('interact');
+  state = Game.update(state, input, 1 / 60);
+  input.pressed.clear();
+  assert.equal(state.invOpen, false, 'a second E closed the stall');
 
   // Selling from the bag.
   const goldBefore = state.bag.gold;

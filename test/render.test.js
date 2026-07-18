@@ -7,6 +7,7 @@ const assert = require('node:assert/strict');
 globalThis.U = require('../js/util.js');
 globalThis.Skills = require('../js/skills.js');
 globalThis.Items = require('../js/items.js');
+globalThis.Stats = require('../js/stats.js');
 globalThis.Bosses = require('../js/bosses.js');
 globalThis.Entities = require('../js/entities.js');
 globalThis.Quests = require('../js/quests.js');
@@ -43,6 +44,95 @@ function freshInput() {
     mouse: { x: 0, y: 0, click: false, rclick: false },
   };
 }
+
+// Every weapon family must draw both as an inventory icon and as a held sprite,
+// and thrown weapons must draw their in-flight projectile — none may throw.
+const WEAPON_FAMILIES = [
+  { family: 'sword', kind: 'melee' },
+  { family: 'greatsword', kind: 'melee' },
+  { family: 'dagger', kind: 'melee' },
+  { family: 'axe', kind: 'melee' },
+  { family: 'mace', kind: 'melee' },
+  { family: 'flail', kind: 'melee' },
+  { family: 'spear', kind: 'melee' },
+  { family: 'bow', kind: 'bow' },
+  { family: 'crossbow', kind: 'crossbow' },
+  { family: 'wand', kind: 'wand' },
+  { family: 'staff', kind: 'staff' },
+  { family: 'thrown', kind: 'thrown' },
+];
+
+test('every weapon family draws as an icon and a held sprite without crashing', () => {
+  const ctx = makeCtx();
+  // Icons: one item per family, at a couple of rarities.
+  for (const { family, kind } of WEAPON_FAMILIES) {
+    for (const rarity of ['common', 'unique']) {
+      const item = { slot: 'weapon', family, kind, color: Items.RARITIES[rarity].color, rarity };
+      Render.drawItemIcon(ctx, item, 100, 100, 1);
+    }
+  }
+  // Held sprites + projectiles: equip each family and swing next to a target.
+  const view = { w: 800, h: 600 };
+  for (const { family, kind } of WEAPON_FAMILIES) {
+    let state = Game.newRun(3);
+    state.monsters.length = 0;
+    const p = state.player;
+    p.equip.weapon = { slot: 'weapon', family, kind, color: '#e8e2d6', rarity: 'common', ilvl: 1, affixes: [], stats: Items.makeItem(1, U.mulberry32(1), { slot: 'weapon', kind }).stats };
+    const input = freshInput();
+    input.keys.space = true;
+    p.facing = 0;
+    for (let i = 0; i < 20; i++) {
+      state = Game.update(state, input, 1 / 60);
+      Render.draw(ctx, state, view);
+      input.pressed.clear();
+    }
+  }
+});
+
+test('behavior monsters, telegraphs, and hostile bolts draw without crashing', () => {
+  const ctx = makeCtx();
+  const view = { w: 1000, h: 700 };
+  let state = Game.newRun(31);
+  state.monsters.length = 0;
+  const p = state.player;
+  // One of each behavior archetype, mid-telegraph, around the hero.
+  const specials = ['cultist', 'bomber', 'gargoyle', 'necromancer'];
+  specials.forEach((type, i) => {
+    state.monsters.push({
+      ...Entities.makeMonster(type, 6, i === 0),
+      x: p.x + 40 + i * 22, y: p.y + (i % 2 ? 26 : -26),
+      attackT: 0, hitT: 0.1, lungeT: 0, wanderT: 1, wandA: 0, aggroed: true, kbx: 0, kby: 0,
+      tel: 0.5, fuseT: type === 'bomber' ? 0.4 : 0,
+    });
+  });
+  // A hostile bolt in flight exercises the 'bolt' projectile draw.
+  state.projectiles.push({ id: 5555, kind: 'bolt', hostile: true, x: p.x + 30, y: p.y, angle: 3.1, vx: -100, vy: 0, dmg: 8, ttl: 2 });
+  for (let i = 0; i < 10; i++) {
+    Render.draw(ctx, state, view);
+  }
+});
+
+test('every armor motif, ring gem, and rarity pip draws without crashing', () => {
+  const ctx = makeCtx();
+  const armorMotifs = ['robe', 'mail', 'scale', 'plate', undefined];
+  const helmMotifs = ['cap', 'helm', 'visor', 'crown', undefined];
+  const rarities = ['common', 'magic', 'rare', 'unique'];
+  for (const rarity of rarities) {
+    const color = Items.RARITIES[rarity].color;
+    for (const motif of armorMotifs) {
+      Render.drawItemIcon(ctx, { slot: 'armor', motif, tone: '#8a94a2', rarity, color }, 50, 50, 1);
+    }
+    for (const motif of helmMotifs) {
+      Render.drawItemIcon(ctx, { slot: 'helmet', motif, tone: '#b8c2cf', rarity, color }, 50, 50, 1);
+    }
+    for (const slot of ['gloves', 'pants', 'boots']) {
+      Render.drawItemIcon(ctx, { slot, tone: '#8a6f4d', rarity, color }, 50, 50, 1);
+    }
+    for (const gem of ['#e8e2d6', '#c86bff', '#ffd84d', '#5fd08a', '#ff5c5c']) {
+      Render.drawItemIcon(ctx, { slot: 'ring', gem, rarity, color }, 50, 50, 1);
+    }
+  }
+});
 
 test('full frame pipeline draws every entity/UI state without crashing', () => {
   const ctx = makeCtx();
@@ -195,8 +285,10 @@ test('pipeline covers town, portals, trading, ranged weapons and the dressed pla
   p.y = (d.vendor.y + 0.5) * 32;
   for (let i = 0; i < 3; i++) frame();
   assert.equal(state.trading, true);
-  input.pressed.add('inv');
+  for (let i = 0; i < 5; i++) frame(); // the "press E to trade" prompt
+  input.pressed.add('interact');
   frame();
+  assert.equal(state.invOpen, true, 'E opened the stall');
   const panelX = (view.w - 660) / 2;
   const panelY = (view.h - 440) / 2 - 14;
   input.mouse.x = panelX + 24 + 26;

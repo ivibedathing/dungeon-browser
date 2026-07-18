@@ -118,6 +118,7 @@
 
   G.descend = function descend(state) {
     state.floor++;
+    for (const pl of state.players) Stats.bump(pl, 'floors');
     G.makeFloorState(state);
     G.questDepth(state);
     G.message(state, `You descend to floor ${state.floor}. The air grows heavier...`, '#c9b37e');
@@ -240,7 +241,7 @@
   Game.smithUpgrade = function (state, source, key) {
     if (!state.smithing) return false;
     const item = source === 'bag' ? state.bag.slots[key] : state.player.equip[key];
-    if (!item || item.slot !== 'weapon') return false;
+    if (!Items.isSmithable(item)) return false;
     if ((item.plus || 0) >= Items.MAX_PLUS) {
       G.message(state, `${Items.displayName(item)} cannot be honed any further.`, '#9aa');
       return false;
@@ -252,7 +253,7 @@
       return false;
     }
     state.bag.gold -= cost;
-    Items.upgradeWeapon(item);
+    Items.upgradeItem(item);
     G.message(state, `${Items.displayName(item)} rings true on the anvil!`, '#ffd84d');
     G.sfx(state, 'anvil');
     G.burst(state, state.player.x, state.player.y - 10, '#ffd84d', 10, 90);
@@ -302,6 +303,8 @@
     const p = state.player;
     state.quests.splice(index, 1);
     state.bag.gold += q.reward.gold;
+    Stats.bump(p, 'quests');
+    Stats.bump(p, 'gold', q.reward.gold);
     G.message(state, `${q.title} — paid ${q.reward.gold} gold and ${q.reward.xp} experience.`, '#ffd84d');
     G.floatText(state, p.x, p.y - 30, `+${q.reward.gold} gold`, '#ffd84d', 14);
     G.burst(state, p.x, p.y, '#ffd84d', 18, 120);

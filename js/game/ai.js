@@ -1,6 +1,11 @@
-// game/ai.js — monster behavior: wander, aggro, flow-field chase, and attacks.
+// game/ai.js — monster behavior: shared upkeep (wander, aggro, flow-field chase,
+// status, knockback) plus the per-type combat dispatch. A monster's `behavior`
+// field selects an entry in G.BEHAVIORS; the registry is seeded here with melee,
+// the shared movement helpers (chaseStep/moveAway), and the per-archetype specials
+// (ranged, exploder, charger, summoner). Boss behaviors live in js/game/behaviors.js.
 (function () {
   const Game = typeof window !== 'undefined' ? window.Game : require('./core.js');
+  const Balance = typeof window !== 'undefined' ? window.Balance : require('../balance.js');
   const G = Game._;
   const { TS, PLAYER_R } = G;
 
@@ -26,6 +31,7 @@
     m.attackT = Math.max(0, m.attackT - dt);
     m.hitT = Math.max(0, m.hitT - dt);
     m.lungeT = Math.max(0, m.lungeT - dt);
+    m.tel = 0; // telegraph charge (0..1); specials raise it while winding up
 
     // Collision radius is capped so oversized champions still fit 1-tile corridors.
     const mr = Math.min(13, m.size * 0.8);
@@ -80,10 +86,12 @@
 
   G.BEHAVIORS = {};
 
-  // The original chase-and-melee, extracted verbatim so there is exactly one
-  // chase implementation rather than a copy that drifts from it.
+  // The original chase-and-melee, extracted so there is exactly one chase
+  // implementation rather than a copy that drifts from it. The hit itself is routed
+  // through hurtPlayer, the single door where dodge, defense, the run's tally sheet,
+  // and thorns retaliation all apply — bypassing it silently dropped thorns.
   G.BEHAVIORS.melee = function melee(state, m, dt, ctx) {
-    const { p, stats, dist, mr, flow, flowDist, mtx, mty } = ctx;
+    const { p, dist } = ctx;
 
     // Attack if in range.
     const range = m.attackRange + PLAYER_R;
@@ -91,18 +99,9 @@
       if (m.attackT <= 0) {
         m.attackT = m.attackCd;
         m.lungeT = 0.18;
-        if (p.dodgeT > 0) {
-          // Rolled clean through the swing.
-          G.floatText(state, p.x, p.y - 24, 'dodged!', '#c9c2b2', 13);
-        } else {
-          const dmg = Entities.damageAfterDefense(m.dmg * (0.9 + state.srand() * 0.2), stats.defense);
-          p.hp -= dmg;
-          p.hurtT = 0.3;
-          state.shake = Math.min(8, state.shake + 2.5);
-          G.floatText(state, p.x, p.y - 24, `-${dmg}`, '#ff5c4d', 15);
-          G.burst(state, p.x, p.y, '#c03a2b', 6, 100);
-          G.sfx(state, 'hurt');
-        }
+        // Thunk so the damage-variance roll only fires on a landed hit — a dodge
+        // short-circuits it, keeping the RNG stream identical to the pre-seam path.
+        G.hurtPlayer(state, p, () => m.dmg * (0.9 + state.srand() * 0.2), { attacker: m });
       }
       return;
     }
@@ -165,5 +164,148 @@
     const moved = G.moveCircle(state.dungeon.grid, m.x, m.y, mr, ax * v, ay * v);
     m.x = moved.x;
     m.y = moved.y;
+  };
+
+  // The back-away counterpart to chaseStep: kiters and chargers use it to open
+  // distance. Same separation and status-aware speed, just aimed away from the hero.
+  G.moveAway = function moveAway(state, m, dt, ctx) {
+    const { p, mr } = ctx;
+    let ax = m.x - p.x;
+    let ay = m.y - p.y;
+    const len = Math.hypot(ax, ay) || 1;
+    ax /= len;
+    ay /= len;
+    for (const o of state.monsters) {
+      if (o === m) continue;
+      const d2 = U.dist2(m.x, m.y, o.x, o.y);
+      const rr = (m.size + o.size) * 0.9;
+      if (d2 < rr * rr && d2 > 0.01) {
+        const d = Math.sqrt(d2);
+        ax += ((m.x - o.x) / d) * 0.5;
+        ay += ((m.y - o.y) / d) * 0.5;
+      }
+    }
+    const alen = Math.hypot(ax, ay) || 1;
+    const v = (m.speed * Entities.statusMoveMult(m) * (m.speedMult || 1) * dt) / alen;
+    const moved = G.moveCircle(state.dungeon.grid, m.x, m.y, mr, ax * v, ay * v);
+    m.x = moved.x;
+    m.y = moved.y;
+  };
+
+  // ---- Per-archetype specials. Each assumes the monster is aggroed and reads its
+  // tuning from Balance.behaviors so the numbers live in one place. ----
+
+  G.BEHAVIORS.ranged = function ranged(state, m, dt, ctx) {
+    const { p, dist } = ctx;
+    const B = Balance.behaviors.ranged;
+    if (m.castT > 0) {
+      // Charging: hold still, telegraph, and loose the bolt at the locked aim point.
+      m.castT -= dt;
+      m.tel = 1 - Math.max(0, m.castT) / B.castTime;
+      if (m.castT <= 0) {
+        m.castT = 0;
+        G.spawnHostileBolt(state, m, m.aimX, m.aimY, B.boltSpeed, m.dmg);
+      }
+      return;
+    }
+    const los = G.lineOfSight(state.dungeon.grid, m.x, m.y, p.x, p.y);
+    if (dist < B.kiteRange) G.moveAway(state, m, dt, ctx);
+    else if (dist > B.fireRange || !los) G.chaseStep(state, m, dt, ctx);
+    if (m.attackT <= 0 && dist <= B.fireRange && los) {
+      m.castT = B.castTime;
+      m.attackT = m.attackCd;
+      m.aimX = p.x; // aim locks at cast start ⇒ the shot is dodgeable
+      m.aimY = p.y;
+    }
+  };
+
+  G.BEHAVIORS.exploder = function exploder(state, m, dt, ctx) {
+    const { dist } = ctx;
+    const B = Balance.behaviors.exploder;
+    if ((m.fuseT || 0) > 0) {
+      m.fuseT -= dt;
+      m.tel = 1 - Math.max(0, m.fuseT) / B.fuseTime;
+      G.chaseStep(state, m, dt, ctx); // lurch on while burning
+      if (m.fuseT <= 0) G.explodeMonster(state, m, B.blastRadius, m.dmg, B.blastKb);
+      return;
+    }
+    if (dist <= m.attackRange + PLAYER_R) {
+      m.fuseT = B.fuseTime;
+      m.lungeT = 0.18;
+      return;
+    }
+    G.chaseStep(state, m, dt, ctx);
+  };
+
+  G.BEHAVIORS.charger = function charger(state, m, dt, ctx) {
+    const { p, dist, mr } = ctx;
+    const B = Balance.behaviors.charger;
+    if ((m.dashT || 0) > 0) {
+      // Dashing: fly straight, deal one heavy contact hit, stop on wall or on contact.
+      m.dashT -= dt;
+      const step = B.dashSpeed * dt;
+      const moved = G.moveCircle(state.dungeon.grid, m.x, m.y, mr, m.dashVX * step, m.dashVY * step);
+      if (moved.x === m.x && moved.y === m.y) m.dashT = 0; // hit a wall
+      m.x = moved.x;
+      m.y = moved.y;
+      for (const pl of state.players) {
+        if (pl.dead || pl.down) continue;
+        const reach = m.size + PLAYER_R;
+        if (U.dist2(m.x, m.y, pl.x, pl.y) < reach * reach) {
+          G.hurtPlayer(state, pl, m.dmg, { attacker: m, shake: 3 });
+          m.dashT = 0;
+          break;
+        }
+      }
+      return;
+    }
+    if ((m.windupT || 0) > 0) {
+      m.windupT -= dt;
+      m.tel = 1 - Math.max(0, m.windupT) / B.windupTime;
+      if (m.windupT <= 0) {
+        const a = Math.atan2(m.aimY - m.y, m.aimX - m.x);
+        m.dashVX = Math.cos(a);
+        m.dashVY = Math.sin(a);
+        m.dashT = B.dashTime;
+      }
+      return;
+    }
+    const los = G.lineOfSight(state.dungeon.grid, m.x, m.y, p.x, p.y);
+    if (m.attackT <= 0 && dist <= B.triggerRange && dist >= B.minRange && los) {
+      m.windupT = B.windupTime;
+      m.attackT = m.attackCd;
+      m.aimX = p.x;
+      m.aimY = p.y;
+      return;
+    }
+    if (dist < B.minRange) G.moveAway(state, m, dt, ctx);
+    else G.chaseStep(state, m, dt, ctx);
+  };
+
+  G.BEHAVIORS.summoner = function summoner(state, m, dt, ctx) {
+    const { dist } = ctx;
+    const B = Balance.behaviors.summoner;
+    if (m.castT > 0) {
+      m.castT -= dt;
+      m.tel = 1 - Math.max(0, m.castT) / B.castTime;
+      if (m.castT <= 0) {
+        m.castT = 0;
+        const alive = state.monsters.filter((o) => o.summonerId === m.id).length;
+        const n = Math.min(Math.max(0, B.cap - alive), B.minionsPerCast);
+        for (let i = 0; i < n; i++) G.spawnMinion(state, m, B.minionType);
+      }
+      return;
+    }
+    if (dist < B.kiteRange) G.moveAway(state, m, dt, ctx);
+    else G.chaseStep(state, m, dt, ctx);
+    if (m.attackT <= 0) {
+      const alive = state.monsters.filter((o) => o.summonerId === m.id).length;
+      if (alive < B.cap) {
+        m.castT = B.castTime;
+        m.attackT = m.attackCd;
+      } else {
+        m.attackT = 1; // at the cap — recheck shortly
+      }
+    }
   };
 })();

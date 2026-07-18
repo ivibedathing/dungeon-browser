@@ -1,11 +1,13 @@
 // save.js — localStorage persistence: run snapshot, best-run records, prefs. Pure; node-testable
 // via the injectable Save._storage. All storage access is failure-safe (private mode, quotas).
 (function () {
+  const Stats = typeof require === 'function' ? require('./stats.js') : window.Stats;
   const Save = {};
 
   Save.KEY = 'dungeon-browser.save.v1';
   Save.RECORDS_KEY = 'dungeon-browser.records.v1';
   Save.PREFS_KEY = 'dungeon-browser.prefs.v1';
+  Save.STATS_KEY = 'dungeon-browser.stats.v1';
 
   Save._storage = typeof localStorage !== 'undefined' ? localStorage : null;
 
@@ -59,6 +61,9 @@
         // Per-character and dies with the hero; death clears the save entirely.
         // Normalized by Quests.mainFromSave on load, so a missing field is fine.
         mainQuest: p.mainQuest,
+        // The run's tally sheet rides with the character; the lifetime total
+        // lives under its own key and only absorbs this on death.
+        stats: p.stats || null,
       },
       bag: state.bag,
     };
@@ -104,6 +109,28 @@
     set(Save.RECORDS_KEY, JSON.stringify(r));
     return r;
   };
+
+  // ---- Lifetime tally ----
+  // Kept apart from the run save because it must survive Save.clear() on death —
+  // that is precisely the moment the finished run is folded in.
+
+  Save.lifetime = function () {
+    try {
+      return Stats.sanitize(JSON.parse(get(Save.STATS_KEY) || 'null'));
+    } catch {
+      return Stats.create();
+    }
+  };
+
+  // Fold a finished run's sheet into the lifetime total. Called once per run, at
+  // the death transition — calling it twice would double-count the run.
+  Save.addLifetime = function (runStats) {
+    const total = Stats.merge(Save.lifetime(), Stats.sanitize(runStats));
+    set(Save.STATS_KEY, JSON.stringify(total));
+    return total;
+  };
+
+  Save.clearLifetime = () => remove(Save.STATS_KEY);
 
   Save.getMuted = function () {
     try {

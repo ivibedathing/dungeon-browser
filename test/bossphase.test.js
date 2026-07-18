@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 globalThis.U = require('../js/util.js');
 globalThis.Items = require('../js/items.js');
 globalThis.Skills = require('../js/skills.js');
+globalThis.Stats = require('../js/stats.js');
 globalThis.Entities = require('../js/entities.js');
 globalThis.Dungeon = require('../js/dungeon.js');
 const Game = require('../js/game.js');
@@ -113,7 +114,7 @@ test('a monster with no phases is completely unaffected', () => {
   const stats = Entities.effectiveStats(state.player);
   G.hitMonster(state, m, 1, stats, 0, 0, state.player);
   assert.equal(m.phaseIdx, undefined, 'no phase bookkeeping appears');
-  assert.equal(m.behavior, undefined, 'no behavior is assigned');
+  assert.equal(m.behavior, 'melee', 'plain melee, the default — no special archetype');
 });
 
 test('burn damage can trigger a phase — every damage source goes through one door', () => {

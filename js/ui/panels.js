@@ -140,7 +140,7 @@
     ctx.textAlign = 'center';
     ctx.fillText(
       state.trading
-        ? 'Click your item: SELL · Right-click: drop · hold CTRL: compare · I or ESC: close'
+        ? 'Click your item: SELL · Right-click: drop · hold CTRL: compare · E, I or ESC: close'
         : 'Click: equip / drink · Right-click: drop · hold CTRL: compare · I or ESC: close',
       L.panel.x + 200 + 218,
       L.panel.y + L.panel.h - 16
@@ -490,6 +490,73 @@
     ctx.fillStyle = 'rgba(200,180,150,0.5)';
     ctx.textAlign = 'center';
     ctx.fillText('Click a skill to spend a point · K or ESC: close', L.treePanel.x + L.treePanel.w / 2, L.treePanel.y + L.treePanel.h - 14);
+    ctx.textAlign = 'left';
+  };
+
+  // The run's sheet and the lifetime total. Lifetime is stored-total + this run,
+  // because a run only folds into storage when it ends — except once it HAS folded
+  // (state.statsBanked, set at the death transition), when the stored total
+  // already contains the run and adding it again would show doubled figures.
+  I.tallies = function tallies(state) {
+    const run = Stats.sanitize(state.player && state.player.stats);
+    const stored = typeof Save !== 'undefined' ? Save.lifetime() : Stats.create();
+    return { run, lifetime: state.statsBanked ? stored : Stats.merge(stored, run) };
+  };
+
+  I.drawStats = function drawStats(ctx, state, view, L) {
+    const P = L.statsPanel;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, view.w, view.h);
+    I.panelBg(ctx, P, 0.96);
+
+    ctx.font = `bold 22px ${SERIF}`;
+    ctx.fillStyle = '#d9c06a';
+    ctx.textAlign = 'center';
+    ctx.fillText('Statistics', P.x + P.w / 2, P.y + 36);
+    ctx.textAlign = 'left';
+
+    const { run, lifetime } = I.tallies(state);
+    const runX = P.x + P.w - 168;
+    const lifeX = P.x + P.w - 30;
+
+    ctx.font = `bold 10px ${SANS}`;
+    ctx.fillStyle = 'rgba(200,180,150,0.6)';
+    ctx.textAlign = 'right';
+    ctx.fillText('THIS RUN', runX, P.y + 62);
+    ctx.fillText('LIFETIME', lifeX, P.y + 62);
+    ctx.textAlign = 'left';
+
+    let y = P.y + 84;
+    for (const f of Stats.FIELDS) {
+      if (f.group) {
+        y += 10;
+        ctx.font = `bold 11px ${SERIF}`;
+        ctx.fillStyle = 'rgba(201,179,126,0.75)';
+        ctx.fillText(f.group.toUpperCase(), P.x + 28, y);
+        ctx.strokeStyle = 'rgba(200,160,90,0.18)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(P.x + 28, y + 6.5);
+        ctx.lineTo(P.x + P.w - 28, y + 6.5);
+        ctx.stroke();
+        y += 20;
+      }
+      ctx.font = `12px ${SANS}`;
+      ctx.fillStyle = 'rgba(232,223,200,0.85)';
+      ctx.fillText(f.label, P.x + 28, y);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = f.gold ? '#ffd84d' : '#e8dfc8';
+      ctx.fillText(Stats.format(run[f.key]), runX, y);
+      ctx.fillStyle = f.gold ? 'rgba(255,216,77,0.6)' : 'rgba(232,223,200,0.55)';
+      ctx.fillText(Stats.format(lifetime[f.key]), lifeX, y);
+      ctx.textAlign = 'left';
+      y += 21;
+    }
+
+    ctx.font = `10px ${SANS}`;
+    ctx.fillStyle = 'rgba(200,180,150,0.5)';
+    ctx.textAlign = 'center';
+    ctx.fillText('C or ESC: close', P.x + P.w / 2, P.y + P.h - 14);
     ctx.textAlign = 'left';
   };
 })();
