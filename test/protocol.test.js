@@ -130,3 +130,42 @@ test('rate limiter sustains a 30 Hz input stream indefinitely', () => {
     t += 1000 / 30;
   }
 });
+
+test('auth messages validate and never mangle the password', () => {
+  const reg = Protocol.validateClient({ t: 'register', username: 'Ashfall_1', password: 'correct horse battery', name: '  Ash ', shirt: '#4a5578' });
+  assert.equal(reg.ok, true);
+  assert.equal(reg.msg.username, 'Ashfall_1', 'username case preserved');
+  assert.equal(reg.msg.password, 'correct horse battery', 'password passes through verbatim for hashing');
+  assert.equal(reg.msg.name, 'Ash', 'display name still cleaned');
+
+  const login = Protocol.validateClient({ t: 'login', username: 'bo_the_bold', password: 'hunter2hunter2' });
+  assert.equal(login.ok, true);
+
+  const resume = Protocol.validateClient({ t: 'resume', token: 'a'.repeat(43) });
+  assert.equal(resume.ok, true);
+  assert.equal(Protocol.validateClient({ t: 'listChars' }).ok, true);
+  assert.equal(Protocol.validateClient({ t: 'selectChar', slot: 3 }).ok, true);
+  assert.equal(Protocol.validateClient({ t: 'deleteChar', slot: 0 }).ok, true);
+
+  const create = Protocol.validateClient({ t: 'createChar', slot: 2, name: 'Cleric', shirt: '#3b6e4f' });
+  assert.equal(create.ok, true);
+  assert.equal(create.msg.slot, 2);
+});
+
+test('auth messages reject bad usernames, weak passwords, and out-of-range slots', () => {
+  const bad = [
+    [{ t: 'register', username: 'ab', password: 'longenough1', name: 'x' }, 'username too short'],
+    [{ t: 'register', username: 'has space', password: 'longenough1', name: 'x' }, 'username charset'],
+    [{ t: 'register', username: 'ok_name', password: 'short', name: 'x' }, 'password too short'],
+    [{ t: 'register', username: 'ok_name', password: 'x'.repeat(200), name: 'x' }, 'password too long'],
+    [{ t: 'login', username: 'ok_name' }, 'missing password'],
+    [{ t: 'resume' }, 'missing token'],
+    [{ t: 'resume', token: 'short' }, 'token too short'],
+    [{ t: 'selectChar', slot: 8 }, 'slot beyond 7'],
+    [{ t: 'selectChar', slot: -1 }, 'negative slot'],
+    [{ t: 'createChar', slot: 1.5, name: 'x' }, 'fractional slot'],
+  ];
+  for (const [msg, why] of bad) {
+    assert.equal(Protocol.validateClient(msg).ok, false, `should reject: ${why}`);
+  }
+});

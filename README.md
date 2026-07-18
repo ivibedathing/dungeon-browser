@@ -15,17 +15,35 @@ Progress is saved automatically (localStorage) — close the tab and pick up whe
 
 ## Multiplayer (co-op)
 
-Up to four heroes can share one dungeon. A co-op server lives under `server/` (the only part of the project with an npm dependency, `ws`); it runs the same simulation the browser does, one instance per room. It's entirely optional — solo play needs nothing but the static files.
+Up to four heroes can share one dungeon. A co-op server lives under `server/` (the only part of the project with npm dependencies — `ws` and `pg`); it runs the same simulation the browser does, one instance per room. It's entirely optional — solo play needs nothing but the static files.
 
 ```sh
-npm install        # one-time: fetches ws
+npm install        # one-time: fetches ws + pg (both pure JS, no compiler needed)
 npm start          # ws://0.0.0.0:8080 by default (PORT to override)
 npm test           # node --test over the whole suite (client + server)
 ```
 
 Serve the game (`python3 -m http.server 8321`) and open it in a browser — **Play Solo** is the offline game as ever; **Host Game** opens a room and shows a share code; **Join Game** takes a friend's code. The client predicts your own hero for instant response and interpolates everyone else for smooth motion; the server is authoritative. The Host/Join client connects to `ws://<host>:8080`, so run the server on the machine you're hosting from.
 
-Note that the hosted claude.ai artifact build is **offline-only**: its content-security policy blocks outbound sockets, so the menu's online options are unavailable there. Online play requires running the game from these files against your own server.
+### Accounts & saved characters
+
+Online play uses accounts: register or log in, then pick from up to eight characters that live **on the server** (a session token in `localStorage` logs you back in automatically). Progress saves on the roguelite triggers — level-up, descending a floor, disconnect — and **death wipes the run** (the slot stays, the hero resets), same as solo. You can play as a guest without an account, but a guest's run isn't saved.
+
+Persistence uses **Postgres**. Without a database the server still runs, but accounts and characters are held in memory only (a startup line warns you). To persist, point `DATABASE_URL` at a Postgres instance — the schema is created on boot:
+
+```sh
+docker run -d --name db-dungeon -e POSTGRES_PASSWORD=dev -p 5432:5432 postgres:16
+export DATABASE_URL=postgres://postgres:dev@localhost:5432/postgres
+npm start
+```
+
+The default `npm test` needs no database (it uses an in-memory store). To also run the Postgres-backed tests, set `DATABASE_URL` and run them serially (they share one database):
+
+```sh
+DATABASE_URL=… node --test --test-concurrency=1 test/*.test.js
+```
+
+The hosted claude.ai artifact build is **offline-only**: its content-security policy blocks outbound sockets, so the menu's online options are unavailable there. Online play requires running the game from these files against your own server.
 
 ## Controls
 

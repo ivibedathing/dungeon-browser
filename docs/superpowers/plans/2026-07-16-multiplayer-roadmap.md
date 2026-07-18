@@ -45,13 +45,46 @@ Exit met: 112/112 tests (7 new), solo verified in-browser, six TDD commits.
 - `bag.gold` and `kills` are **shared** run state in Phase 2 (single `state.bag`); per-player loot/gold is Phase 4. Don't build save semantics assuming per-player bags yet.
 - Client identity (name/shirt) is sent on `join`; there's no auth. Phase 3 adds register/login messages ahead of `join` and an opaque session token.
 
-## Phase 3 — Accounts & server saves (~1 session)
+## Phase 3 — Accounts & server saves ✅ *(landed 2026-07-18, branch `phase3-accounts-saves` merged to `main`)*
 
-- `server/store.js` — better-sqlite3; accounts (argon2id), opaque session tokens, characters (Save.snapshot JSON, versioned).
-- Register/login messages + client screens; character select (max 8 per account).
-- Server-side save triggers (level/floor/item-debounce/disconnect/room-close); death wipes run per roguelite rule.
-- Optional one-time localStorage character import, flagged `imported`.
-- Exit: kill server mid-run, restart, character resumes from server exactly like today's localStorage proof.
+> Plan: `docs/superpowers/plans/2026-07-18-phase3-accounts-saves.md`
+> **Storage deviation:** the owner chose **Postgres** (multi-writer, built for
+> horizontal scale) over the roadmap's original better-sqlite3 note. Driver is `pg`
+> (pure JS, no native build); password hashing is scrypt via `node:crypto` (no argon2).
+
+- `server/store.js` — one async persistence interface, two implementations: `PgStore`
+  (real Postgres via a `pg` pool, the production path) and `MemStore` (in-memory, for
+  the service-free test suite and DB-less dev). `createStore` picks by `DATABASE_URL`.
+  `server/crypto.js` = scrypt hash/verify + opaque 256-bit tokens. `server/store.sql` =
+  accounts / sessions / characters (character = the `Save.snapshot` blob as `jsonb`).
+- Protocol + server: register/login/resume → session token + character list; listChars/
+  createChar/selectChar/deleteChar (max 8 slots). Auth gets the strictest rate bucket.
+  Join is dual-mode — authenticated players load their selected character (and are saved),
+  guests get a fresh starter (Phase 1/2 behavior, no persistence).
+- `server/character.js` maps blobs ↔ live room players. Save triggers (fire-and-forget,
+  never on the tick path): level-up, floor change, a periodic catch-all, disconnect;
+  **death wipes the run** (slot survives, blob resets to a starter). Host owns the shared
+  room bag; guest bags are frozen server-side so co-op can't clobber them.
+- Client: `js/net.js` auth senders + localStorage token for auto-resume; `js/ui/account.js`
+  login/register + 8-slot character select; `main.js` flow menu → account → select → host/
+  join → playing. Solo play untouched.
+- Exit met: 222 tests service-free (MemStore); the gated Postgres suite (store parity +
+  the restart-resume integration proof) passes against Docker Postgres — a level-9 hero
+  persisted on one server resumes by token on a fresh server pointed at the same DB. Six
+  TDD commits.
+
+### Notes for Phase 4 (co-op rules & party UX)
+
+- **Per-player loot is the big one.** Bag/gold is still shared room state (host owns it,
+  guest bags frozen). Phase 4's instanced loot makes each player's bag its own; then the
+  save path saves each player's live bag instead of the host/frozen split.
+- The **local online hero renders as a starter** (client builds it from `Entities.newPlayer`;
+  the server has the real character). Movement prediction may drift slightly for a character
+  with move-speed gear (reconcile corrects it in ~100 ms). To render/predict the real hero,
+  send the selected character's equip in `welcome` or the `self` block.
+- **One character, one live session:** nothing yet stops the same (account, slot) joining two
+  rooms at once (last-write-wins on save). Add a "character already active" guard.
+- Session tokens have a 30-day TTL, refreshed on resume; no logout-elsewhere / revocation UI.
 
 ## Phase 4 — Co-op rules & party UX (~1 session)
 
