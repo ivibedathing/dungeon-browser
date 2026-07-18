@@ -5,6 +5,7 @@
   const Quests = typeof window !== 'undefined' ? window.Quests : require('../quests.js');
   const Props = typeof window !== 'undefined' ? window.Props : require('../props.js');
   const Balance = typeof window !== 'undefined' ? window.Balance : require('../balance.js');
+  const Bosses = typeof window !== 'undefined' ? window.Bosses : require('../bosses.js');
   const Game = typeof window !== 'undefined' ? window.Game : require('./core.js');
   const G = Game._;
   const { DROPS, PLAYER_R } = G;
@@ -359,6 +360,7 @@
     state.kills++;
     state.monsters.splice(state.monsters.indexOf(m), 1);
     G.questProgress(state, (q) => Quests.recordKill(q, m));
+    G.mainQuestKill(state, m, killer || state.player);
     state.events.push({ type: 'kill', monsterId: m.id, x: m.x, y: m.y, champion: !!m.champion, boss: !!m.boss });
     G.burst(state, m.x, m.y, '#7e1b24', 16, 140);
     G.sfx(state, 'kill');
@@ -393,6 +395,31 @@
     }
   }
   G.awardKillXP = awardKillXP;
+
+  // Act-boss credit, per character, following the SAME share rule as XP: if you
+  // were close enough to earn experience from the kill, you banked the act. A
+  // party can therefore sit on different acts, which is the accepted consequence
+  // of per-character progress — the banner reads the local hero's act, not the
+  // room's.
+  G.mainQuestKill = function mainQuestKill(state, m, killer) {
+    if (!m.boss || !m.actBoss) return;
+    const range = (Balance.coop && Balance.coop.shareRange) || 900;
+    const r2 = range * range;
+    for (const pl of state.players) {
+      if (pl.dead || pl.down) continue;
+      if (pl !== killer && U.dist2(pl.x, pl.y, m.x, m.y) > r2) continue;
+      if (!pl.mainQuest) pl.mainQuest = Quests.newMain();
+      const act = Bosses.actByNumber(pl.mainQuest.act);
+      if (!Quests.recordBossKill(pl.mainQuest, m, state.floor)) continue;
+      if (pl === state.player) {
+        G.message(state, `Act ${Quests.ROMAN[act.act]} complete — ${act.done}`, '#ffd84d');
+        if (pl.mainQuest.complete) {
+          G.message(state, 'The main quest is complete. You have reached the bottom.', '#ffd84d');
+        }
+        G.sfx(state, 'levelup');
+      }
+    }
+  };
 
   // ---- Active skills ----
 

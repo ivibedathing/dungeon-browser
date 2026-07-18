@@ -160,6 +160,7 @@
     championCounts: [2, 3],
     championUnits: 8, // work units per champion head
     championMinFloor: 2,
+    mainUnitsPerAct: 60, // main-quest payout per act, in the same work units
     delveDepth: [2, 3], // floors below the posting floor a delve asks for
     delveUnits: 12, // work units per floor descended
   };

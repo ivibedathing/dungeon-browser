@@ -109,6 +109,11 @@
 
   Bosses.COUNT = Bosses.ACTS.length;
 
+  // The per-character main-quest record. Lives here rather than in quests.js
+  // because entities.js needs it in newPlayer and quests.js already requires
+  // entities.js — this is the one module below both. Quests.newMain delegates.
+  Bosses.newProgress = () => ({ act: 1, slain: [], complete: false });
+
   // The act a floor belongs to, or null past the end of the main quest. EVERY
   // caller must handle null: floors past 24 are still generated and still
   // playable, they simply have no act.

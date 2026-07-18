@@ -42,6 +42,9 @@
       // Each hero owns their bag (co-op: instanced loot goes to p.bag). Solo/local
       // play reads it through the state.bag alias, so the save format is unchanged.
       bag: Items.createBag(),
+      // The main quest is per-character and dies with the character: death
+      // clears the save, so a run is a pure roguelike attempt at floor 24.
+      mainQuest: Bosses.newProgress(),
     };
   };
 
