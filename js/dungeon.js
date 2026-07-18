@@ -7,10 +7,14 @@
 
   const D = {};
 
-  D.TILE = { WALL: 0, FLOOR: 1, ENTRY: 2, STAIRS_DOWN: 3 };
+  // WATER and CLIFF are the overworld's two impassable kinds — being non-walkable
+  // is the whole trick: collision, the flow field, and monster pathing all route
+  // around them with no new code. ROAD is walkable and is what guarantees the
+  // continent stays connected across noise-carved lakes and ridges.
+  D.TILE = { WALL: 0, FLOOR: 1, ENTRY: 2, STAIRS_DOWN: 3, WATER: 4, CLIFF: 5, ROAD: 6 };
   D.TILE_SIZE = 32;
 
-  const WALKABLE = (t) => t === D.TILE.FLOOR || t === D.TILE.ENTRY || t === D.TILE.STAIRS_DOWN;
+  const WALKABLE = (t) => t === D.TILE.FLOOR || t === D.TILE.ENTRY || t === D.TILE.STAIRS_DOWN || t === D.TILE.ROAD;
   D.isWalkable = WALKABLE;
 
   D.THEMES = [
