@@ -134,7 +134,16 @@
     G.message(state, `You descend to floor ${state.floor}. The air grows heavier...`, '#c9b37e');
     if (state.floor % 5 === 0 && !state.milestones.includes(state.floor)) {
       state.milestones.push(state.floor);
-      G.message(state, `A waypoint to floor ${state.floor} shimmers into Ashfall Camp.`, '#7fb8ff');
+      // Inside a mouth there is no town level to hang a waypoint portal in — the
+      // mouth itself remembers your depth and drops you back here next time. Say
+      // that, rather than promising a portal that will never appear.
+      G.message(
+        state,
+        state.stash && state.stash.overworld
+          ? `Floor ${state.floor} marked — this mouth will remember how deep you got.`
+          : `A waypoint to floor ${state.floor} shimmers into Ashfall Camp.`,
+        '#7fb8ff'
+      );
     }
     G.sfx(state, 'stairs');
     if (typeof Save !== 'undefined') Save.updateRecords(state);
