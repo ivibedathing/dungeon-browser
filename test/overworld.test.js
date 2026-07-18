@@ -16,7 +16,9 @@ globalThis.World = require('../js/world.js');
 const Save = require('../js/save.js');
 globalThis.Save = Save;
 const Game = require('../js/game.js');
+globalThis.Game = Game; // the render/ui modules read it as a browser global
 const Balance = require('../js/balance.js');
+globalThis.Balance = Balance;
 const World = globalThis.World;
 const D = globalThis.Dungeon;
 const G = Game._;
@@ -404,10 +406,10 @@ test('a dungeon monster keeps the original wander — no home, no leash', () => 
   const m = s.monsters[0];
   assert.equal(m.home, undefined, 'a floor spawn must not gain a home');
   assert.equal(m.chunk, undefined);
-  const start = { x: m.x, y: m.y };
   for (let i = 0; i < 60; i++) G.monsterUpdate(s, m, 1 / 30);
-  assert.ok(Number.isFinite(m.x) && Number.isFinite(m.y));
-  void start;
+  assert.ok(Number.isFinite(m.x) && Number.isFinite(m.y), 'a floor spawn wandered to NaN');
+  assert.equal(m.wp, undefined, 'a floor spawn must never pick up a waypoint');
+  assert.equal(m.returning, undefined, 'a floor spawn must never leash');
 });
 
 test('clearing a chunk keeps it clear until its respawn timer is up', () => {
@@ -458,14 +460,12 @@ test('props and roadside braziers stream in and out with their chunk', () => {
   assert.ok(s.props.length > 0, 'the world has no scenery at all');
   for (const pr of s.props) assert.ok(s.world.active.has(pr.chunk), 'a prop outlived its chunk');
   for (const t of s.dungeon.torches) assert.ok(s.world.active.has(t.chunk), 'a brazier outlived its chunk');
-  const before = s.props.length;
   const away = World.chunkCenter(8, 8);
   const awaySpot = G.findOpenTile(s.world.world, away.x, away.y);
   s.player.x = (awaySpot.x + 0.5) * TS;
   s.player.y = (awaySpot.y + 0.5) * TS;
   s = pump(s, 3);
   for (const pr of s.props) assert.ok(s.world.active.has(pr.chunk), 'a prop survived deactivation');
-  void before;
 });
 
 // ---- Phase 4: places — town, mouths, waystones ----
@@ -636,8 +636,8 @@ test('a waystone unlocks on touch, not on sight, and then warps', () => {
   s.player.x = (stoneB.x + 0.5) * TS;
   s.player.y = (stoneB.y + 0.5) * TS;
   s = pump(s, 2);
-  const recB = G.unlockedWaystones(s).find((p) => p.x === stoneB.x && p.y === stoneB.y);
-  assert.ok(recB, 'the second stone should now be unlocked too');
+  assert.ok(G.unlockedWaystones(s).some((p) => p.x === stoneB.x && p.y === stoneB.y),
+    'the second stone should now be unlocked too');
 
   // Warp back to the first, keeping the map and the discoveries.
   const exploredRef = s.explored;
@@ -854,14 +854,13 @@ test('a save can never resurrect a landmark the generator no longer places', () 
 // ---- Phase 5: co-op ----
 
 test('a room is a shared continent, and joining does not replace it with a floor', () => {
-  const { Game: SimGame } = require('../server/sim.js');
   const RoomMod = require('../server/room.js');
   const Room = RoomMod.Room || RoomMod;
   const room = new Room({ code: 'WRLD', seed: 777 });
   assert.equal(room.state.inWorld, true, 'a fresh room should be on the continent');
 
   const a = room.join({ name: 'A' });
-  const b = room.join({ name: 'B' });
+  room.join({ name: 'B' });
   // refreshPartyScaling used to regenerate the floor on every join, which out
   // here would swap the whole continent for a 120x120 dungeon.
   assert.equal(room.state.inWorld, true, 'joining replaced the world with a dungeon floor');
@@ -890,8 +889,6 @@ test('a room is a shared continent, and joining does not replace it with a floor
   const snap = room.snapshotFor(a.id);
   assert.equal(snap.inWorld, true);
   assert.equal(snap.worldSeed, room.state.worldSeed >>> 0);
-  void b;
-  void SimGame;
 });
 
 test('server activation runs over the union of the party’s radii, and stays capped', () => {
@@ -979,4 +976,138 @@ test('prediction carries a hero across a chunk boundary with no seam', () => {
   const maxStep = Math.max(...moving);
   const minStep = Math.min(...moving);
   assert.ok(maxStep - minStep < 0.5, `movement stuttered across the boundary (${minStep} … ${maxStep})`);
+});
+
+// ---- Phase 5: the draw paths ----
+// The sim being right is not the same as the game being playable: every new
+// visual (water, cliffs, roads, biome palettes, landmarks, the windowed minimap,
+// the map panel) is browser code the sim tests never touch. These run the real
+// Render.draw and UI.draw over an overworld state against a stub context, which
+// is what catches a reference error in a path no unit test would reach.
+
+function stubCtx() {
+  const gradient = { addColorStop() {} };
+  const target = {};
+  return new Proxy(target, {
+    get(t, prop) {
+      if (prop === 'measureText') return (str) => ({ width: String(str).length * 6 });
+      if (prop === 'createLinearGradient' || prop === 'createRadialGradient') return () => gradient;
+      if (typeof t[prop] !== 'undefined') return t[prop];
+      const fn = () => {};
+      t[prop] = fn;
+      return fn;
+    },
+    set(t, prop, v) {
+      t[prop] = v;
+      return true;
+    },
+  });
+}
+
+test('the whole draw pipeline runs over the overworld — terrain, landmarks, HUD, map', () => {
+  const Render = require('../js/render.js');
+  const UI = require('../js/ui.js');
+  globalThis.Render = Render;
+  globalThis.UI = UI;
+  const ctx = stubCtx();
+  const view = { w: 1280, h: 720 };
+
+  let s = Game.newSoloRun(2468);
+  s = pump(s, 4);
+
+  // At camp: the plaza, its fixtures, the well.
+  Render.draw(ctx, s, view);
+  UI.draw(ctx, s, view);
+
+  // Out in dangerous country: monsters, props, braziers, biome palettes.
+  const c = World.chunkCenter(22, 22);
+  const spot = G.findOpenTile(s.world.world, c.x, c.y);
+  s.player.x = (spot.x + 0.5) * TS;
+  s.player.y = (spot.y + 0.5) * TS;
+  s = pump(s, 4);
+  assert.ok(s.monsters.length > 0, 'nothing to draw out here');
+  Render.draw(ctx, s, view);
+  UI.draw(ctx, s, view);
+
+  // The world map panel, with something pinned on it.
+  s.mapOpen = true;
+  UI.draw(ctx, s, view);
+  s.mapOpen = false;
+
+  // Every new tile kind must have a draw path. Force one of each into view.
+  const px = Math.floor(s.player.x / TS);
+  const py = Math.floor(s.player.y / TS);
+  for (const [i, tile] of [D.TILE.WATER, D.TILE.CLIFF, D.TILE.ROAD, D.TILE.STAIRS_DOWN, D.TILE.ENTRY].entries()) {
+    s.dungeon.grid[py][px + 2 + i] = tile;
+    s.explored[py][px + 2 + i] = 1;
+  }
+  Render.draw(ctx, s, view);
+
+  // And the shoreline branch, which reads its four neighbours.
+  s.dungeon.grid[py][px + 2] = D.TILE.WATER;
+  s.dungeon.grid[py + 1][px + 2] = D.TILE.FLOOR;
+  s.dungeon.grid[py - 1][px + 2] = D.TILE.FLOOR;
+  Render.draw(ctx, s, view);
+});
+
+test('the draw pipeline still runs over a dungeon floor reached through a mouth', () => {
+  const Render = require('../js/render.js');
+  const UI = require('../js/ui.js');
+  const ctx = stubCtx();
+  const view = { w: 1280, h: 720 };
+
+  let s = Game.newSoloRun(2468);
+  const world = s.world.world;
+  World.ensureAround(world, World.TOWN_CX, World.TOWN_CY, 4);
+  const mouth = Object.values(world.pois).find((p) => p.kind === 'mouth');
+  s.player.x = (mouth.x + 0.5) * TS;
+  s.player.y = (mouth.y + 0.5) * TS;
+  s = pump(s, 2);
+  assert.equal(s.inWorld, false, 'never went underground');
+  s = pump(s, 4);
+  Render.draw(ctx, s, view);
+  UI.draw(ctx, s, view);
+
+  // And back out to the surface.
+  G.travel(s, { kind: 'town' });
+  s = pump(s, 4);
+  assert.equal(s.inWorld, true);
+  Render.draw(ctx, s, view);
+  UI.draw(ctx, s, view);
+});
+
+test('across many seeds the hero starts in the open and can walk anywhere', () => {
+  // The first version of this placed the hero four tiles past the plaza edge,
+  // which on some seeds is a 3-tile road chute through a cliff field — a
+  // claustrophobic way to open a game about an open world, and a real risk of
+  // being boxed in. Both properties are pinned here rather than eyeballed.
+  for (const seed of [1, 7, 42, 777, 20260719, 31337, 99999, 123456]) {
+    const s = Game.newSoloRun(seed);
+    const px = Math.floor(s.player.x / TS);
+    const py = Math.floor(s.player.y / TS);
+    let open = 0;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) if (D.isWalkable(s.dungeon.grid[py + dy][px + dx])) open++;
+    }
+    assert.equal(open, 9, `seed ${seed} starts hemmed in (${open}/9 neighbours open)`);
+
+    // And the world is genuinely reachable on foot from where they stand.
+    const R = 3;
+    World.ensureAround(s.world.world, World.TOWN_CX, World.TOWN_CY, R + 1);
+    const rect = {
+      x0: (World.TOWN_CX - R - 1) * 64,
+      y0: (World.TOWN_CY - R - 1) * 64,
+      x1: (World.TOWN_CX + R + 2) * 64 - 1,
+      y1: (World.TOWN_CY + R + 2) * 64 - 1,
+    };
+    const flow = D.flowFieldWindow(s.world.world.grid, [{ x: px, y: py }], 100000, rect);
+    const unreached = [];
+    for (let cy = World.TOWN_CY - R; cy <= World.TOWN_CY + R; cy++) {
+      for (let cx = World.TOWN_CX - R; cx <= World.TOWN_CX + R; cx++) {
+        const c = World.chunkCenter(cx, cy);
+        if (D.flowAt(flow, c.x, c.y) === Infinity) unreached.push(`${cx},${cy}`);
+      }
+    }
+    assert.deepEqual(unreached, [], `seed ${seed} boxes the hero in: ${unreached.join(' ')}`);
+  }
 });

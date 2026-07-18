@@ -107,7 +107,6 @@
     const k = key(cx, cy);
     const content = World.rollChunkContent(w.world, cx, cy);
     const partyN = state.partyN || (state.players && state.players.length) || 1;
-    const rnd = state.srand || Math.random;
 
     if (!w.cleared[k]) {
       for (const s of content.monsters) {
@@ -142,7 +141,6 @@
       });
     }
     for (const t of content.torches) state.dungeon.torches.push({ x: t.x, y: t.y, chunk: k });
-    void rnd;
   };
 
   // A resident died. When the last one in a chunk falls the chunk counts as
@@ -510,9 +508,12 @@
       respawn: {},
       t: 0,
     };
-    // Just south of the camp entry: close enough to walk in and sell, far enough
-    // that the first thing you see is open country.
-    Game.enterWorld(state, { x: camp.entry.x, y: camp.entry.y + 4 });
+    // Just inside the camp's south gate. Placing the hero beyond the plaza edge
+    // drops them wherever the terrain happens to be — on some seeds that is the
+    // 3-tile road chute through a cliff field, which is a claustrophobic way to
+    // open a game about an open world. Inside the plaza is guaranteed clear, and
+    // the road out is a few steps south.
+    Game.enterWorld(state, { x: camp.entry.x, y: camp.entry.y + 2 });
     state.messages = [];
     state.fade = {
       t: 0,

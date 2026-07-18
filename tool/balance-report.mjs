@@ -13,6 +13,7 @@ globalThis.Skills = require(join(root, 'js/skills.js'));
 const Bosses = require(join(root, 'js/bosses.js'));
 const E = require(join(root, 'js/entities.js'));
 const Quests = require(join(root, 'js/quests.js'));
+const World = require(join(root, 'js/world.js'));
 
 const out = [];
 const line = (s = '') => out.push(s);
@@ -195,5 +196,47 @@ for (const f of [1, 3, 5, 8, 12, 20]) {
   };
   line(`| ${f} | ${cell('hunt', 'bat')} | ${cell('hunt', 'brute')} | ${cell('champion', null)} | ${cell('delve', null)} |`);
 }
+
+// ---- The overworld ----
+const W = Balance.world;
+line();
+line('## The overworld');
+line();
+line(`A ${World.SIZE}×${World.SIZE}-tile continent — ${World.CHUNKS}×${World.CHUNKS} chunks of ${World.CHUNK} —`);
+line('with Ashfall Camp at its centre. Danger runs along ONE axis: `ring`, the');
+line('Chebyshev chunk distance from camp. Ring maps to an **effective floor** that');
+line('feeds straight into the same `E.makeMonster` the dungeon uses, so hp/dmg/xp');
+line('scaling, champion rolls and the `minFloor` type pool all come along unchanged —');
+line('there is no second balance curve here.');
+line();
+line(`> effective floor = max(1, round(${W.floorPerRing} × ring)), and 0 inside the safe ring (ring ≤ ${W.safeRing})`);
+line(`> monsters per chunk = min(${W.densityCap}, round(${W.densityBase} + ${W.densityPerRing}·ring) + rand(0..${W.densityJitter}))`);
+line(`> champion chance = min(${W.championCap}, ${W.championBase} + ${W.championPerRing}·ring)`);
+line();
+line('| ring | effective floor | monsters/chunk | champion | world boss | zombie hp | zombie dmg |');
+line('| ---: | ---: | ---: | ---: | --- | ---: | ---: |');
+for (const ring of [0, 1, 2, 4, 6, 8, 10, 12, 14, 16]) {
+  const f = World.effectiveFloor(ring);
+  if (!f) {
+    line(`| ${ring} | — (safe) | 0 | — | no | — | — |`);
+    continue;
+  }
+  const density = Math.min(W.densityCap, Math.round(W.densityBase + W.densityPerRing * ring));
+  const champ = Math.min(W.championCap, W.championBase + W.championPerRing * ring);
+  const m = E.makeMonster('zombie', f, false, 1);
+  const boss = ring >= W.bossMinRing ? `${Math.round(W.bossChance * 100)}%/chunk` : 'no';
+  line(`| ${ring} | ${f} | ${density}–${density + W.densityJitter} | ${(champ * 100).toFixed(1)}% | ${boss} | ${Math.round(m.maxHP)} | ${Math.round(m.dmg)} |`);
+}
+line();
+line('| knob | value | why |');
+line('| --- | --- | --- |');
+line(`| activeRadius | ${W.activeRadius} chunks | a ${2 * W.activeRadius + 1}×${2 * W.activeRadius + 1} live block (${(2 * W.activeRadius + 1) * World.CHUNK}² tiles), comfortably past the viewport |`);
+line(`| activeChunkCap | ${W.activeChunkCap} | a scattered party multiplies the live set; this is what the sim budget is sized against |`);
+line(`| sightTiles | ${W.sightTiles} | daylight, against a dungeon floor's 9 |`);
+line(`| leashTiles | ${W.leashTiles} | past this a chase is abandoned — without it a conga line forms across the map |`);
+line(`| respawnSeconds | ${W.respawnSeconds} | how long a cleared chunk stays cleared |`);
+line(`| mouthChance | ${W.mouthChance} | dungeon mouths per chunk (one POI roll per chunk) |`);
+line(`| waystoneChance | ${W.waystoneChance} | waystones per chunk — the world's fast travel |`);
+line();
 
 console.log(out.join('\n'));

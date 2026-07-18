@@ -322,7 +322,7 @@
   window.__rtt = (ms) => { if (net) net.latencyMs = ms | 0; };
   window.__input = input;
   window.__view = view;
-  window.__mods = { Game, Items, Entities, Dungeon, U, Save, Sfx, Skills, Quests, Net };
+  window.__mods = { Game, Items, Entities, Dungeon, World, U, Save, Sfx, Skills, Quests, Net };
 
   function clearEdges() {
     input.pressed.clear();

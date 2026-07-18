@@ -73,9 +73,7 @@ test('Room repopulates chunks for the party while pristine, then locks them', ()
   const room = new Room({ code: 'AAAA', seed: 123 });
   room.join({});
   partyToWild(room);
-  const solo = room.state.monsters.find((m) => !m.boss);
-  assert.ok(solo, 'the wild should hold monsters');
-  const soloHP = solo.maxHP;
+  assert.ok(room.state.monsters.some((m) => !m.boss), 'the wild should hold monsters');
 
   // Seat three more before any blow lands. Out here the pristine rescale drops
   // the live chunks rather than regenerating a floor; they come back from the
@@ -92,7 +90,6 @@ test('Room repopulates chunks for the party while pristine, then locks them', ()
   const partyRef = E.makeMonster(scaled.type, ef, scaled.champion, 4);
   assert.notEqual(soloRef.maxHP, partyRef.maxHP, 'party scaling must actually differ');
   assert.equal(scaled.maxHP, partyRef.maxHP, 'monsters are not party-scaled');
-  void soloHP;
 
   // Land a blow: the live set locks. A later join must not rescale survivors.
   scaled.hp -= 1;
@@ -101,32 +98,6 @@ test('Room repopulates chunks for the party while pristine, then locks them', ()
   room.join({});
   assert.deepEqual(room.state.monsters.map((m) => m.maxHP), before, 'a dirtied world stays locked');
 });
-
-const _unusedOldScalingTest = () => {
-  const { Room } = require('../server/room.js');
-  const room = new Room({ code: 'AAAA', seed: 123 });
-  room.join({});
-  const oneN = room.state.monsters.length ? room.state.monsters[0].maxHP : null;
-  // Seat three more before any blow lands → the pristine floor rescales to 4.
-  room.join({});
-  room.join({});
-  room.join({});
-  assert.equal(room.state.partyN, 4);
-  const scaled = room.state.monsters.find((m) => !m.boss);
-  assert.ok(scaled, 'floor has monsters');
-  // A floor-1 monster of the same type should now be ~party-scaled vs a solo one.
-  const soloRef = E.makeMonster(scaled.type, room.state.floor, scaled.champion, 1);
-  const partyRef = E.makeMonster(scaled.type, room.state.floor, scaled.champion, 4);
-  assert.equal(scaled.maxHP, partyRef.maxHP);
-  assert.notEqual(soloRef.maxHP, partyRef.maxHP);
-  // Land a blow: the floor locks. A later join must not rescale survivors.
-  scaled.hp -= 1;
-  const before = room.state.monsters.map((m) => m.maxHP);
-  // (room is full at 4; simulate a leave+join churn on a dirtied floor)
-  room.leave('p3');
-  room.join({});
-  assert.deepEqual(room.state.monsters.map((m) => m.maxHP), before, 'dirtied floor stays locked');
-};
 
 // ---- Task 2: attacker-aware combat ----
 

@@ -295,7 +295,7 @@
       const TSl = TS;
       const at = data.worldPos
         ? { x: Math.floor(data.worldPos.x / TSl), y: Math.floor(data.worldPos.y / TSl) }
-        : { x: camp.entry.x, y: camp.entry.y + 4 };
+        : { x: camp.entry.x, y: camp.entry.y + 2 };
       Game.enterWorld(state, at);
     }
 
