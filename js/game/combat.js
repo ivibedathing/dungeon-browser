@@ -168,6 +168,11 @@
   // (the monster) to enable thorns retaliation; ranged/blast sources omit it.
   function hurtPlayer(state, p, rawDmgOrFn, opts) {
     opts = opts || {};
+    // A downed co-op ally is out of the fight until revived: the explode, dash, and
+    // hostile-bolt paths all skip pl.down at their call site, so melee (which reaches
+    // here via nearestPlayer) must too — otherwise it lands phantom hits that fire
+    // hurt feedback and inflate the 'taken' tally without touching real HP.
+    if (p.down) return 0;
     if (p.dodgeT > 0 && !opts.ignoreDodge) {
       G.floatText(state, p.x, p.y - 24, 'dodged!', '#c9c2b2', 13);
       return 0;
@@ -389,6 +394,17 @@
           break;
         }
       }
+      // Shatter a destructible prop in the flight path, exactly as a hero shot does,
+      // so a barrel/crate still blocks and breaks an enemy bolt.
+      if (!dead) {
+        for (const prop of state.props) {
+          const reach = prop.size + 4;
+          if (U.dist2(pr.x, pr.y, prop.x, prop.y) >= reach * reach) continue;
+          dead = true;
+          G.hitProp(state, prop, pr.dmg);
+          break;
+        }
+      }
     }
     if (dead) state.projectiles.splice(state.projectiles.indexOf(pr), 1);
   }
@@ -590,7 +606,7 @@
         if (!G.lineOfSight(state.dungeon.grid, p.x, p.y, m.x, m.y)) continue;
         const dmg = Math.max(1, Math.round(stats.damage * (0.8 + 0.15 * rank) * (0.85 + state.srand() * 0.3)));
         hitAny = true;
-        hitMonster(state, m, dmg, stats, Math.atan2(m.y - p.y, m.x - p.x), stats.kb * 1.2);
+        hitMonster(state, m, dmg, stats, Math.atan2(m.y - p.y, m.x - p.x), stats.kb * 1.2, p);
       }
       if (G.damagePropsInArc(state, p.x, p.y, p.facing, Math.PI * 2, reachBase, () => Math.max(1, Math.round(stats.damage * (0.8 + 0.15 * rank) * (0.85 + state.srand() * 0.3))))) hitAny = true;
       if (hitAny) {

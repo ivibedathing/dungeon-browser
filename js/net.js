@@ -583,6 +583,10 @@
         // last thing still hardcoded empty online — the server persisted it all
         // along, but never sent it and the client never read it.
         if (net.self.mainQuest) rs.player.mainQuest = Quests.mainFromSave(net.self.mainQuest);
+        // Same story for the run tally sheet: the server owns it (the online client
+        // never runs the sim that bumps it), so mirror the authoritative copy in so
+        // the stats panel reads real numbers instead of the zeroed local sheet.
+        if (net.self.stats) rs.player.stats = Stats.sanitize(net.self.stats);
       }
 
       // Splice the predicted local hero over its interpolated twin: everyone else
