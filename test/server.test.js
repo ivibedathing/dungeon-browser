@@ -6,12 +6,16 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const WebSocket = require('ws');
 const { createServer } = require('../server/server.js');
+const { createStore } = require('../server/store.js');
 
 const PORT = 0; // let the OS pick a free port
 
+// Each server gets its own fresh in-memory store, so this suite is hermetic and
+// never touches (or collides across runs with) an ambient DATABASE_URL. Real
+// Postgres is covered by store.test.js and the gated persistence integration test.
 function startServer() {
   return new Promise((resolve) => {
-    const srv = createServer({ port: PORT, tickHz: 30 });
+    const srv = createServer({ port: PORT, tickHz: 30, store: createStore({}) });
     srv.wss.on('listening', () => resolve(srv));
   });
 }
@@ -354,6 +358,49 @@ test('register → create → select → join loads the stored character into th
   const player = srv.rooms.get(c.welcome.code).state.players[0];
   assert.equal(player.level, 7, 'the room hero loaded at the stored level');
   assert.equal(player.xp, 123, 'and xp');
+});
+
+test('save triggers persist progress; death wipes the run to a starter', async (t) => {
+  // A server with a store spy so we can watch exactly what gets saved.
+  const { createStore } = require('../server/store.js');
+  const mem = createStore({});
+  await mem.init();
+  const saves = [];
+  const origSave = mem.saveCharacter.bind(mem);
+  mem.saveCharacter = (accountId, slot, blob) => {
+    saves.push({ accountId, slot, level: blob.player.level, floor: blob.floor });
+    return origSave(accountId, slot, blob);
+  };
+  const srv = createServer({ port: 0, tickHz: 30, store: mem });
+  await srv.ready;
+  await new Promise((r) => srv.wss.on('listening', r));
+  const url = `ws://127.0.0.1:${srv.port}`;
+  t.after(() => srv.close());
+
+  const c = new Client(url);
+  await c.open();
+  c.register('hero_one', 'a strong password', 'Hero');
+  assert.ok(await until(() => c.authed), 'registered');
+  c.createChar(0, 'Hero');
+  assert.ok(await until(() => c.characters && c.characters.length === 1), 'character made');
+  c.selectChar(0);
+  assert.ok(await until(() => c.selected), 'selected');
+  c.join('Hero');
+  assert.ok(await until(() => c.welcome), 'joined');
+  const room = srv.rooms.get(c.welcome.code);
+
+  // Let the room tick a few times so the level tracker is seeded at 1, then force a
+  // level-up: the next tick must fire a save at the new level.
+  assert.ok(await until(() => c.snapshots.length > 2), 'room is ticking');
+  room.state.players[0].level = 5;
+  assert.ok(await until(() => saves.some((s) => s.level === 5)), 'level-up persisted the new level');
+
+  // Kill the hero: death saves a wiped, starter-level blob to the same slot.
+  const account = await mem.verifyLogin('hero_one', 'a strong password');
+  room.state.players[0].hp = 0;
+  assert.ok(await until(() => saves.some((s) => s.level === 1), 3000), 'death saved a starter-level blob');
+  const stored = await mem.loadCharacter(account.id, 0);
+  assert.equal(stored.player.level, 1, 'the stored character was wiped to a starter');
 });
 
 test('login rejects wrong credentials without revealing which field is wrong', async (t) => {

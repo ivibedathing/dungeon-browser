@@ -55,6 +55,12 @@ class Room {
     this.lastMs = null;
     this.seat = 0; // monotonic: a leaver's id is never handed to the next joiner
     this.events = []; // this tick's drained sim events, awaiting per-player filtering
+    // Persistence hook: the server sets this to (playerId, reason) => void. The room
+    // fires it on the roguelite save triggers; the server owns what actually persists.
+    this.onSave = null;
+    this._saveTrack = new Map(); // playerId -> {level, dead}
+    this._savedFloor = this.state.floor;
+    this._saveAccum = 0; // seconds since the last periodic save
   }
 
   get playerCount() {
@@ -158,8 +164,32 @@ class Room {
     // stay until the client says otherwise.
     if (ran > 0) for (const buf of this.inputs.values()) buf.pressed.clear();
 
+    if (ran > 0) this._detectSaves(ran * Game.TICK);
+
     this.events = Game.drainEvents(this.state);
     return this.tick_ - before;
+  }
+
+  // Fire the save hook on the roguelite triggers: a player levels up, the floor
+  // changes, a player dies (a wipe), or the periodic catch-all for gold/xp drift.
+  // The room only signals; the server decides what actually persists.
+  _detectSaves(dtSec) {
+    if (!this.onSave) return;
+    for (const p of this.state.players) {
+      const last = this._saveTrack.get(p.id) || { level: p.level, dead: false };
+      if (p.dead && !last.dead) this.onSave(p.id, 'death');
+      else if (!p.dead && p.level > last.level) this.onSave(p.id, 'level');
+      this._saveTrack.set(p.id, { level: p.level, dead: p.dead });
+    }
+    if (this.state.floor !== this._savedFloor) {
+      this._savedFloor = this.state.floor;
+      for (const p of this.state.players) if (!p.dead) this.onSave(p.id, 'floor');
+    }
+    this._saveAccum += dtSec;
+    if (this._saveAccum >= 5) {
+      this._saveAccum = 0;
+      for (const p of this.state.players) if (!p.dead) this.onSave(p.id, 'periodic');
+    }
   }
 
   // ---- Outbound projections ----

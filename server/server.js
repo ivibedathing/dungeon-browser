@@ -173,6 +173,7 @@ function createServer(opts = {}) {
       let seed = 0;
       for (let i = 0; i < code.length; i++) seed = (Math.imul(seed, 31) + code.charCodeAt(i)) >>> 0;
       room = new Room({ code, seed });
+      room.onSave = onSaveHandler(room);
       rooms.set(code, room);
     }
 
@@ -197,6 +198,41 @@ function createServer(opts = {}) {
     if (!peer.room) return kick(ws, Protocol.ERR.NOT_JOINED);
     peer.room.setInput(peer.id, msg);
   }
+
+  // ---- Save triggers (fire-and-forget; never awaited on the tick path) ----
+
+  function peerFor(room, playerId) {
+    for (const ws of wss.clients) {
+      const p = ws._peer;
+      if (p && p.room === room && p.id === playerId) return { ws, peer: p };
+    }
+    return null;
+  }
+
+  // Persist one player's character on a roguelite trigger. Guests (no account) are
+  // skipped. Death wipes the run: the slot survives, its blob resets to a starter —
+  // the server-side equivalent of solo's Save.clear() on death.
+  function saveForPlayer(room, playerId, reason) {
+    const found = peerFor(room, playerId);
+    if (!found) return;
+    const { peer } = found;
+    if (!peer.accountId || peer.selectedSlot == null) return; // guest — nothing to persist
+    const player = room.state.players.find((p) => p.id === playerId);
+    if (!player) return;
+
+    let blob;
+    if (reason === 'death') {
+      blob = Character.starterBlob(player.name, player.shirt);
+    } else {
+      // The room's shared bag belongs to the host; a guest saves against the bag it
+      // arrived with (frozen), so co-op can't overwrite a teammate's stored loot.
+      const bag = peer.isHost ? room.state.bag : peer.frozenBag;
+      blob = Character.characterBlob(room.state, player, bag);
+    }
+    store.saveCharacter(peer.accountId, peer.selectedSlot, blob).catch(onError);
+  }
+
+  const onSaveHandler = (room) => (playerId, reason) => saveForPlayer(room, playerId, reason);
 
   wss.on('connection', (ws) => {
     attach(ws);
@@ -251,10 +287,16 @@ function createServer(opts = {}) {
     ws.on('close', () => {
       const peer = ws._peer;
       if (peer.room && peer.id) {
+        // Flush the leaving player's progress before removing them (a live player
+        // who isn't dead — a dead one already had its run wiped on death).
+        const player = peer.room.state.players.find((p) => p.id === peer.id);
+        if (player && !player.dead) saveForPlayer(peer.room, peer.id, 'leave');
         peer.room.leave(peer.id);
         // An empty room is reaped immediately: no lingering sim, no code squatting.
         if (peer.room.isEmpty) rooms.delete(peer.room.code);
       }
+      // The session token deliberately survives a disconnect so the client can
+      // auto-resume; it expires only by TTL or explicit logout.
       peer.room = null;
     });
 
