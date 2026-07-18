@@ -109,6 +109,20 @@ Bosses (every 2nd floor, brute stock): ×8 HP, ×2 damage, ×10 XP, knockback ×
 | 15 | 316 | 54 | 82 | 822 / 81 |
 | 20 | 501 | 70 | 104 | 1303 / 105 |
 
+### swarmling — base 8 hp / 4 dmg / 4 xp · speed 165 · aggro 1400px · from floor 2
+
+| floor | hp | dmg | xp | champion hp/dmg |
+| ---: | ---: | ---: | ---: | --- |
+| 1 | 8 | 4 | 4 | 21 / 6 |
+| 2 | 11 | 5 | 5 | 29 / 8 |
+| 4 | 20 | 7 | 7 | 52 / 11 |
+| 6 | 30 | 10 | 8 | 78 / 15 |
+| 8 | 43 | 12 | 10 | 112 / 18 |
+| 10 | 58 | 14 | 12 | 151 / 21 |
+| 12 | 75 | 16 | 14 | 195 / 24 |
+| 15 | 105 | 20 | 16 | 273 / 30 |
+| 20 | 167 | 25 | 21 | 434 / 38 |
+
 ### Boss (Floor Guardian) per boss floor
 
 | floor | hp | dmg | xp |
@@ -133,6 +147,22 @@ Bosses (every 2nd floor, brute stock): ×8 HP, ×2 damage, ×10 XP, knockback ×
 | 10 | 6–8 |
 | 13 | 6–8 |
 | 20 | 6–8 |
+
+## Ambush swarms
+
+From floor 2 on, each eligible room (non-entry, non-boss, ≥ 30 interior tiles) has a 32% chance to hide a swarm, up to 2 per floor. Step within 3.4 tiles of the room center and a pack of swarmlings bursts in from a 3.6–7-tile ring and sprints at you.
+
+Pack size = min(18, 6 + rand(0..3) + floor(0.8·(floor−2))).
+
+| floor | pack size (min–max) |
+| ---: | --- |
+| 2 | 6–9 |
+| 3 | 6–9 |
+| 5 | 8–11 |
+| 7 | 10–13 |
+| 10 | 12–15 |
+| 13 | 14–17 |
+| 20 | 18–18 |
 
 ## Loot luck
 

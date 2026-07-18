@@ -288,6 +288,57 @@
       spawns[U.randInt(rng, 0, spawns.length - 1)].champion = true;
     }
 
+    // Ambush swarms: from SW.minFloor on, a few roomy chambers hide a pack that
+    // bursts in when the hero reaches the middle. Spawn tiles are precomputed here
+    // so triggering is a pure lookup — solo and server produce the same swarm.
+    const SW = Balance.swarm;
+    const ambushes = [];
+    if (floor >= SW.minFloor) {
+      const packBonus = Math.max(0, Math.floor((floor - SW.minFloor) * SW.packRate));
+      for (let ri = 1; ri < rooms.length && ambushes.length < SW.maxRooms; ri++) {
+        const room = rooms[ri];
+        if (boss && room.x === boss.room.x && room.y === boss.room.y) continue;
+        if ((room.w - 2) * (room.h - 2) < SW.minRoomTiles) continue;
+        if (rng() >= SW.roomChance) continue;
+        // Candidate spawn tiles: a tight ring around the room center. Keyed off the
+        // center (not the walls) so on the big post-bigger-maps rooms the pack still
+        // spawns close and converges together instead of trickling in from afar.
+        const ring = [];
+        for (let y = room.y; y < room.y + room.h; y++) {
+          for (let x = room.x; x < room.x + room.w; x++) {
+            if (grid[y][x] !== D.TILE.FLOOR) continue;
+            const dTiles = Math.hypot(x - room.cx, y - room.cy);
+            if (dTiles >= SW.ringMinTiles && dTiles <= SW.ringMaxTiles) ring.push({ x, y });
+          }
+        }
+        if (ring.length < 3) continue;
+        const count = Math.min(SW.packCap, SW.packBase + U.randInt(rng, 0, SW.packRand) + packBonus);
+        const swSpawns = [];
+        const picked = new Set();
+        for (let k = 0; k < count; k++) {
+          // Sample with replacement across the ring, skipping exact dupes; a few
+          // collisions on a small ring just mean a slightly tighter pack.
+          let cell = null;
+          for (let t = 0; t < 8; t++) {
+            const c = ring[U.randInt(rng, 0, ring.length - 1)];
+            const key = c.y * W + c.x;
+            if (picked.has(key)) continue;
+            picked.add(key);
+            cell = c;
+            break;
+          }
+          if (cell) swSpawns.push(cell);
+        }
+        if (!swSpawns.length) continue;
+        ambushes.push({
+          cx: room.cx,
+          cy: room.cy,
+          radius: SW.triggerTiles,
+          spawns: swSpawns,
+        });
+      }
+    }
+
     return {
       grid,
       width: W,
@@ -296,6 +347,7 @@
       entry,
       stairs,
       spawns,
+      ambushes,
       torches,
       theme: D.themeFor(floor),
       floor,

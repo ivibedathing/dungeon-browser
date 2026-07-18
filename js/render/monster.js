@@ -59,6 +59,29 @@
       ctx.beginPath();
       ctx.arc(x, by, s * 0.62, 0, Math.PI * 2);
       ctx.fill();
+    } else if (m.type === 'swarmling') {
+      // A skittering blob: low round body, quick twitchy legs, beady glint.
+      const scuttle = Math.sin(t * 22 + m.x * 0.4);
+      ctx.strokeStyle = R.shade(m.color, 0.6);
+      ctx.lineWidth = 1.6;
+      for (let i = -1; i <= 1; i++) {
+        const legY = by + s * 0.2;
+        const kick = scuttle * (i === 0 ? 0.6 : 1) * s * 0.35;
+        ctx.beginPath();
+        ctx.moveTo(x + i * s * 0.4, legY);
+        ctx.lineTo(x + i * s * 0.9, legY + s * 0.5 + kick);
+        ctx.moveTo(x + i * s * 0.4, legY);
+        ctx.lineTo(x + i * s * 0.9, legY + s * 0.5 - kick);
+        ctx.stroke();
+      }
+      ctx.fillStyle = m.color;
+      ctx.beginPath();
+      ctx.ellipse(x, by, s * 0.95, s * 0.75, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = R.shade(m.color, 1.25);
+      ctx.beginPath();
+      ctx.ellipse(x - s * 0.2, by - s * 0.25, s * 0.35, s * 0.28, 0, 0, Math.PI * 2);
+      ctx.fill();
     } else if (m.type === 'wraith') {
       const wob = Math.sin(t * 6 + m.y * 0.08) * 2.5;
       ctx.fillStyle = m.color;
@@ -114,7 +137,7 @@
     }
 
     // Eyes: dim when idle, burning when aggroed.
-    const eyeY = m.type === 'bat' ? by - 1 : by - s * 0.4;
+    const eyeY = m.type === 'bat' || m.type === 'swarmling' ? by - 1 : by - s * 0.4;
     ctx.fillStyle = m.aggroed ? '#ff3b30' : 'rgba(20,10,10,0.85)';
     ctx.beginPath();
     ctx.arc(x - s * 0.2, eyeY, m.aggroed ? 2.2 : 1.7, 0, Math.PI * 2);

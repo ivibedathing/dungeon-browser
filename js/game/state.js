@@ -27,6 +27,15 @@
       kbx: 0,
       kby: 0,
     }));
+    // Ambush swarms wait dormant until a player reaches a room's center. The
+    // dungeon supplies the precomputed layout; state owns the `triggered` flag.
+    state.ambushes = (dungeon.ambushes || []).map((a) => ({
+      cx: a.cx,
+      cy: a.cy,
+      radius: a.radius,
+      spawns: a.spawns,
+      triggered: false,
+    }));
     if (dungeon.boss) {
       state.monsters.push({
         ...Entities.makeBoss(state.floor),
