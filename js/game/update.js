@@ -182,11 +182,11 @@
     // Attack (hold the left mouse button to keep swinging) — never mid-roll. The
     // sim reads the held flag as `keys.space` for historical reasons; the client
     // now drives it from the mouse. Swings/shots fly along `p.facing` — the cursor.
-    if (input.keys.space && p.attackT <= 0 && p.dodgeT <= 0) G.playerAttack(state);
+    if (input.keys.space && p.attackT <= 0 && p.dodgeT <= 0) G.playerAttack(state, p);
 
     // Active skills (F / G / H).
     for (let i = 0; i < Skills.ACTIVE_ORDER.length; i++) {
-      if (input.pressed.has('skill' + i)) Game.castSkill(state, i);
+      if (input.pressed.has('skill' + i)) Game.castSkill(state, p, i);
     }
 
     // Town portal skill (cooldown/arming ticks live in updateWorld).

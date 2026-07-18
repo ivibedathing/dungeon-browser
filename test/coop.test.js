@@ -73,3 +73,77 @@ test('Room scales the entry floor to the party while it is pristine, then locks 
   room.join({});
   assert.deepEqual(room.state.monsters.map((m) => m.maxHP), before, 'dirtied floor stays locked');
 });
+
+// ---- Task 2: attacker-aware combat ----
+
+// Build a second live hero with all the runtime fields Game.newRun stamps on players[0].
+function addAlly(state, id, x, y) {
+  const pl = Entities.newPlayer({ name: id });
+  Object.assign(pl, {
+    id, dead: false, facing: 0, attackT: 0, swing: null, hurtT: 0, healPool: 0, healRate: 0,
+    skillCd: { whirlwind: 0, nova: 0, prayer: 0 }, dodgeT: 0, dodgeCdT: 0, dodgeDir: { x: 1, y: 0 },
+    x, y, hp: pl.baseMaxHP, mana: pl.baseMaxMana,
+  });
+  state.players.push(pl);
+  return pl;
+}
+
+test('attacker-aware melee: a non-players[0] hero damages and is credited its own kill', () => {
+  const state = Game.newRun(4242);
+  state.monsters = [];
+  state.props = [];
+  const p0 = state.player;
+  // Beyond Balance.coop.shareRange (900) so only p1 is in XP range of the kill.
+  const p1 = addAlly(state, 'p1', p0.x + 1400, p0.y);
+  const m = { ...Entities.makeMonster('bat', 1, false), id: state.nextId++, x: p1.x + 20, y: p1.y, hp: 3, maxHP: 3, hitT: 0, kbx: 0, kby: 0, aggroed: false, lungeT: 0 };
+  state.monsters.push(m);
+  p1.facing = 0;
+  Game._.playerAttack(state, p1);
+  assert.ok(!state.monsters.includes(m), 'p1 (not players[0]) killed the monster it faced');
+  assert.ok(p1.xp > 0, 'p1 was credited the kill XP');
+  assert.equal(p0.xp, 0, 'the distant idle p0 (out of share range) gained nothing');
+});
+
+test('a projectile carries its firer as owner and credits the kill to them', () => {
+  const state = Game.newRun(99);
+  state.monsters = [];
+  state.props = [];
+  state.projectiles = [];
+  const p0 = state.player;
+  const p1 = addAlly(state, 'p1', p0.x + 600, p0.y);
+  p1.equip.weapon = Items.makeItem(1, U.mulberry32(1), { slot: 'weapon', kind: 'bow' });
+  p1.facing = 0;
+  Game._.playerAttack(state, p1);
+  assert.equal(state.projectiles.length, 1, 'p1 loosed one arrow');
+  assert.equal(state.projectiles[0].ownerId, 'p1', 'the arrow is owned by its firer');
+});
+
+// ---- Task 3: full XP to every in-range party member ----
+
+test('a kill pays full XP to every living player within share range, not just the killer', () => {
+  const state = Game.newRun(31);
+  state.monsters = [];
+  state.props = [];
+  const p0 = state.player;
+  const p1 = addAlly(state, 'p1', p0.x + 40, p0.y); // right next to p0, in range
+  const m = { ...Entities.makeMonster('bat', 1, false), id: state.nextId++, x: p1.x + 20, y: p1.y, hp: 3, maxHP: 3, hitT: 0, kbx: 0, kby: 0, aggroed: false, lungeT: 0 };
+  state.monsters.push(m);
+  const reward = m.xp;
+  p1.facing = 0;
+  Game._.playerAttack(state, p1);
+  assert.equal(p1.xp, reward, 'the killer got full XP');
+  assert.equal(p0.xp, reward, 'the nearby ally got the SAME full XP (not a split)');
+});
+
+test('a player out of share range gets no XP from the kill', () => {
+  const state = Game.newRun(32);
+  state.monsters = [];
+  state.props = [];
+  const p0 = state.player;
+  const p1 = addAlly(state, 'p1', p0.x + 2000, p0.y); // far
+  const m = { ...Entities.makeMonster('bat', 1, false), id: state.nextId++, x: p1.x + 20, y: p1.y, hp: 3, maxHP: 3, hitT: 0, kbx: 0, kby: 0, aggroed: false, lungeT: 0 };
+  state.monsters.push(m);
+  p1.facing = 0;
+  Game._.playerAttack(state, p1);
+  assert.ok(p1.xp > 0 && p0.xp === 0, 'only the in-range killer gained XP');
+});
