@@ -45,7 +45,7 @@
     // Controls hint (top left) + portal status.
     ctx.font = `10px ${SANS}`;
     ctx.fillStyle = 'rgba(215,200,175,0.45)';
-    ctx.fillText('WASD move · Mouse aim · Click attack · SPACE dodge · F/G/H skills · K skill tree · C stats · E pick up / buy / read · 1-4 potions · T town portal · I inventory · N sound', 12, 20);
+    ctx.fillText('WASD move · Mouse aim · Click attack · SPACE dodge · F/G/H skills · K skill tree · C stats · E pick up / buy / read · 1-4 potions · T town portal · I inventory · M map · N sound', 12, 20);
     if (state.portalCdT > 0) {
       ctx.fillStyle = 'rgba(140,175,230,0.7)';
       ctx.fillText(`Portal ready in ${Math.ceil(state.portalCdT)}s`, 12, 35);
@@ -138,6 +138,7 @@
     if (state.treeOpen) I.drawTree(ctx, state, view, L);
     if (state.boardOpen) I.drawBoard(ctx, state, view, L);
     if (state.statsOpen) I.drawStats(ctx, state, view, L);
+    if (state.mapOpen) I.drawWorldMap(ctx, state, view);
     I.drawTooltip(ctx, state, view);
 
     // Floor-transition fade + title card.

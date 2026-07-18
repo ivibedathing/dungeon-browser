@@ -4,14 +4,44 @@
   const R = Render._;
   const TS = Dungeon.TILE_SIZE;
 
+  // The palette for one tile. Dungeon floors have a single theme; the overworld
+  // asks the level, which answers from the biome under that tile — so a coastline
+  // and a ridge a screen apart are coloured differently without the renderer
+  // knowing anything about biomes or noise.
+  R.paletteAt = function paletteAt(state, x, y) {
+    const d = state.dungeon;
+    return d.biomeAt ? d.biomeAt(x, y) : d.theme;
+  };
+
   R.drawTile = function drawTile(ctx, state, x, y) {
     const t = state.dungeon.grid[y][x];
-    const theme = state.dungeon.theme;
+    const theme = R.paletteAt(state, x, y);
     const px = x * TS;
     const py = y * TS;
     const h = R.tileHash(x, y, state.floor);
 
-    if (t === Dungeon.TILE.WALL) {
+    // Open water: impassable, so it reads as a hard edge to the walkable world.
+    if (t === Dungeon.TILE.WATER) {
+      ctx.fillStyle = theme.water;
+      ctx.fillRect(px, py, TS, TS);
+      // Slow ripples, offset per tile so the surface never pulses in lockstep.
+      const ph = state.time * 0.8 + h * 6.28;
+      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      ctx.fillRect(px + 3, py + 8 + Math.sin(ph) * 2, TS - 10, 1.5);
+      ctx.fillRect(px + 8, py + 20 + Math.sin(ph + 1.7) * 2, TS - 14, 1.5);
+      // Foam where the water meets standable ground — the shoreline.
+      const grid = state.dungeon.grid;
+      const shore = (row, xx) => row && Dungeon.isWalkable(row[xx]);
+      ctx.fillStyle = 'rgba(220,235,240,0.22)';
+      if (shore(grid[y - 1], x)) ctx.fillRect(px, py, TS, 2.5);
+      if (shore(grid[y + 1], x)) ctx.fillRect(px, py + TS - 2.5, TS, 2.5);
+      if (shore(grid[y], x - 1)) ctx.fillRect(px, py, 2.5, TS);
+      if (shore(grid[y], x + 1)) ctx.fillRect(px + TS - 2.5, py, 2.5, TS);
+      return;
+    }
+
+    // Cliffs are walls by another name: same bevel, biome rock colour.
+    if (t === Dungeon.TILE.WALL || t === Dungeon.TILE.CLIFF) {
       ctx.fillStyle = theme.wallEdge;
       ctx.fillRect(px, py, TS, TS);
       const grid = state.dungeon.grid;
@@ -35,10 +65,20 @@
       return;
     }
 
-    // Floor.
-    const base = (x + y) % 2 === 0 ? theme.floorA : theme.floorB;
+    // Floor — or a road, which is the same ground packed down and paler.
+    const road = t === Dungeon.TILE.ROAD;
+    const base = road ? theme.road : (x + y) % 2 === 0 ? theme.floorA : theme.floorB;
     ctx.fillStyle = R.shade(base, 0.94 + h * 0.12);
     ctx.fillRect(px, py, TS, TS);
+    if (road) {
+      // Loose grit rather than a tile grid: a road should read as worn, not laid.
+      ctx.fillStyle = 'rgba(0,0,0,0.13)';
+      ctx.fillRect(px + h * 22, py + (1 - h) * 20 + 3, 4, 3);
+      ctx.fillRect(px + (1 - h) * 18 + 4, py + h * 24, 3, 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      ctx.fillRect(px + h * 16 + 6, py + h * 12 + 8, 5, 2);
+      return;
+    }
     ctx.strokeStyle = 'rgba(0,0,0,0.13)';
     ctx.lineWidth = 1;
     ctx.strokeRect(px + 0.5, py + 0.5, TS - 1, TS - 1);

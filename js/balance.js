@@ -161,6 +161,47 @@
     minRoomTiles: 30, // rooms smaller than this (w·h interior) never host a swarm
   };
 
+  // ---- The overworld ----
+  // Danger in the world is one dial: `ring`, the Chebyshev chunk distance from
+  // Ashfall Camp (0 at home, up to 16 at the far corner). Ring maps to an
+  // EFFECTIVE FLOOR that feeds straight into the same E.makeMonster the dungeon
+  // uses — so hp/dmg/xp scaling, champion rolls, and the minFloor type pool all
+  // come along unchanged and there is no second balance curve to maintain.
+  Balance.world = {
+    // Chunks within this radius of any player are live. 2 ⇒ a 5x5 block of
+    // 320x320 tiles, comfortably past the ~40x23-tile viewport, and roughly the
+    // monster count of one dungeon floor — so the per-frame sim budget is flat.
+    activeRadius: 2,
+    // A scattered co-op party multiplies the active set; this cap is what the
+    // sim budget is actually sized against.
+    activeChunkCap: 60,
+    // Daylight. Dungeon floors see 9 tiles by torchlight; out here you see far,
+    // and there is no dim veil over what is merely out of sight.
+    sightTiles: 18,
+
+    floorPerRing: 1.6, // effective floor = round(floorPerRing * ring), min 1
+    safeRing: 1, // the town chunk and its eight neighbours spawn nothing at all
+
+    // Monsters per chunk: base + perRing*ring, capped, jittered by the chunk roll.
+    densityBase: 3,
+    densityPerRing: 0.85,
+    densityCap: 14,
+    densityJitter: 3, // + rand(0..densityJitter)
+
+    championBase: 0.05,
+    championPerRing: 0.022,
+    championCap: 0.4,
+
+    bossMinRing: 8, // from here out a chunk can hold a world boss
+    bossChance: 0.07,
+
+    respawnSeconds: 240, // a cleared chunk stays cleared this long
+    leashTiles: 16, // how far a monster strays from home before it gives up and walks back
+
+    propsPerChunk: { min: 0, max: 3 },
+    torchChance: 0.35, // odds a chunk gets a roadside brazier
+  };
+
   // ---- Co-op (party) rules ----
   // Every co-op rule degrades to solo behavior at n=1 (all multipliers = 1). Monster
   // HP/XP scale with party size; loot instances one roll per in-range player; downed

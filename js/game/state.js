@@ -80,6 +80,7 @@
     state.portals = [];
     state.stash = null;
     state.inTown = false;
+    state.inWorld = false; // a dungeon floor is never the overworld
     state.shop = null;
     state.trading = false;
     state.smithing = false;
@@ -139,6 +140,11 @@
     player.dodgeDir = { x: 1, y: 0 };
     const state = {
       runSeed: seed >>> 0,
+      // The continent is its own seed so a run's dungeons and its world can be
+      // reasoned about (and regenerated) independently.
+      worldSeed: (((seed >>> 0) * 2654435761) >>> 0) ^ 0x5eed,
+      inWorld: false,
+      world: null,
       floor: 1,
       nextId: 1,
       player,
@@ -173,6 +179,7 @@
       milestones: [],
       events: [],
       statsOpen: false,
+      mapOpen: false,
       // Set once the finished run's tally has been folded into the lifetime
       // total, so the stats panel stops adding the run on top of it.
       statsBanked: false,

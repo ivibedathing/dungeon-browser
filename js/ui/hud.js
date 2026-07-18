@@ -179,34 +179,72 @@
     }
   };
 
+  // The minimap window in TILE coords: which slice of the level it shows. A
+  // dungeon floor fits whole, as it always did; the 2048-tile overworld gets a
+  // window that scrolls with the player and clamps at the map edges. Exported so
+  // the tests can pin the rect without a canvas.
+  I.minimapRect = function minimapRect(state) {
+    const d = state.dungeon;
+    const span = d.overworld ? Math.min(I.MINIMAP_SPAN, d.width) : Math.max(d.width, d.height);
+    if (!d.overworld) return { x0: 0, y0: 0, span };
+    const TS = Dungeon.TILE_SIZE;
+    const half = span / 2;
+    return {
+      x0: U.clamp(state.player.x / TS - half, 0, Math.max(0, d.width - span)),
+      y0: U.clamp(state.player.y / TS - half, 0, Math.max(0, d.height - span)),
+      span,
+    };
+  };
+  I.MINIMAP_SPAN = 112; // tiles across the overworld minimap window
+
   I.drawMinimap = function drawMinimap(ctx, state, L) {
     const mm = L.minimap;
     const d = state.dungeon;
-    const s = mm.size / d.width;
+    const TS = Dungeon.TILE_SIZE;
+    const rect = I.minimapRect(state);
+    const s = mm.size / rect.span;
     ctx.fillStyle = 'rgba(8,6,10,0.65)';
     ctx.fillRect(mm.x, mm.y, mm.size, mm.size);
     ctx.strokeStyle = '#4a3b28';
     ctx.lineWidth = 1.5;
     ctx.strokeRect(mm.x + 0.5, mm.y + 0.5, mm.size - 1, mm.size - 1);
-    for (let y = 0; y < d.height; y++) {
-      for (let x = 0; x < d.width; x++) {
-        if (!state.explored[y][x]) continue;
+
+    // Screen position of a tile, and whether it lands inside the box at all.
+    const sx = (tx) => mm.x + (tx - rect.x0) * s;
+    const sy = (ty) => mm.y + (ty - rect.y0) * s;
+    const inside = (tx, ty) => tx >= rect.x0 && ty >= rect.y0 && tx < rect.x0 + rect.span && ty < rect.y0 + rect.span;
+
+    const yA = Math.max(0, Math.floor(rect.y0));
+    const yB = Math.min(d.height - 1, Math.ceil(rect.y0 + rect.span));
+    const xA = Math.max(0, Math.floor(rect.x0));
+    const xB = Math.min(d.width - 1, Math.ceil(rect.x0 + rect.span));
+    const cell = Math.max(1, s);
+    for (let y = yA; y <= yB; y++) {
+      const erow = state.explored[y];
+      if (!erow) continue;
+      for (let x = xA; x <= xB; x++) {
+        if (!erow[x]) continue;
         const t = d.grid[y][x];
-        if (t === Dungeon.TILE.WALL) continue;
+        if (t === Dungeon.TILE.WALL || t === Dungeon.TILE.CLIFF) continue;
         if (t === Dungeon.TILE.STAIRS_DOWN) {
           const blink = 0.5 + 0.5 * Math.sin(state.time * 4);
           ctx.fillStyle = `rgba(255,216,77,${0.5 + blink * 0.5})`;
-          ctx.fillRect(mm.x + x * s - 1, mm.y + y * s - 1, s + 2, s + 2);
-        } else {
-          ctx.fillStyle = 'rgba(190,180,205,0.42)';
-          ctx.fillRect(mm.x + x * s, mm.y + y * s, Math.max(1, s), Math.max(1, s));
+          ctx.fillRect(sx(x) - 1, sy(y) - 1, cell + 2, cell + 2);
+          continue;
         }
+        if (t === Dungeon.TILE.WATER) ctx.fillStyle = 'rgba(90,140,175,0.5)';
+        else if (t === Dungeon.TILE.ROAD) ctx.fillStyle = 'rgba(220,205,160,0.6)';
+        else ctx.fillStyle = 'rgba(190,180,205,0.42)';
+        ctx.fillRect(sx(x), sy(y), cell, cell);
       }
     }
     for (const m of state.monsters) {
       if (!m.aggroed) continue;
+      const tx = m.x / TS;
+      const ty = m.y / TS;
+      if (!inside(tx, ty)) continue;
       ctx.fillStyle = m.champion ? '#ff9a3d' : '#e5534b';
-      ctx.fillRect(mm.x + (m.x / Dungeon.TILE_SIZE) * s - 1, mm.y + (m.y / Dungeon.TILE_SIZE) * s - 1, 3, 3);
+      ctx.fillRect(sx(tx) - 1, sy(ty) - 1, 3, 3);
     }
     // Party allies as coloured dots (their shirt tone); the local hero pulses white.
     const p = state.player;
@@ -214,11 +252,14 @@
     for (const pl of party) {
       if (pl === p || pl.id === p.id) continue;
       if (pl.dead) continue;
+      const tx = pl.x / TS;
+      const ty = pl.y / TS;
+      if (!inside(tx, ty)) continue;
       ctx.fillStyle = pl.down ? 'rgba(150,150,160,0.85)' : pl.shirt || '#8fd4ff';
-      ctx.fillRect(mm.x + (pl.x / Dungeon.TILE_SIZE) * s - 1.5, mm.y + (pl.y / Dungeon.TILE_SIZE) * s - 1.5, 4, 4);
+      ctx.fillRect(sx(tx) - 1.5, sy(ty) - 1.5, 4, 4);
     }
     const pulse = 0.6 + 0.4 * Math.sin(state.time * 6);
     ctx.fillStyle = `rgba(255,255,255,${pulse})`;
-    ctx.fillRect(mm.x + (p.x / Dungeon.TILE_SIZE) * s - 1.5, mm.y + (p.y / Dungeon.TILE_SIZE) * s - 1.5, 4, 4);
+    ctx.fillRect(sx(p.x / TS) - 1.5, sy(p.y / TS) - 1.5, 4, 4);
   };
 })();

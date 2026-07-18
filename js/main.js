@@ -32,7 +32,7 @@
   const HELD = { KeyW: 'w', KeyA: 'a', KeyS: 's', KeyD: 'd', ArrowUp: 'w', ArrowLeft: 'a', ArrowDown: 's', ArrowRight: 'd' };
   const EDGE = {
     Space: 'dodge', KeyE: 'interact', KeyI: 'inv', Tab: 'inv', KeyB: 'inv', KeyR: 'restart',
-    KeyQ: 'drink', KeyT: 'portal', KeyN: 'mute', KeyM: 'music', KeyK: 'tree', KeyC: 'stats',
+    KeyQ: 'drink', KeyT: 'portal', KeyN: 'mute', KeyJ: 'music', KeyM: 'map', KeyK: 'tree', KeyC: 'stats',
     KeyF: 'skill0', KeyG: 'skill1', KeyH: 'skill2',
     Digit1: 'belt0', Digit2: 'belt1', Digit3: 'belt2', Digit4: 'belt3', Escape: 'esc',
   };

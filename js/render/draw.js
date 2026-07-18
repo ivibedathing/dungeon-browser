@@ -24,12 +24,16 @@
     const x1 = Math.min(state.dungeon.width - 1, Math.ceil((camX + view.w) / TS) + 1);
     const y1 = Math.min(state.dungeon.height - 1, Math.ceil((camY + view.h) / TS) + 1);
 
-    // Tiles (explored only) + dim veil on out-of-sight tiles.
+    // Tiles (explored only) + dim veil on out-of-sight tiles. The overworld is
+    // daylight: it keeps `explored` for the map panel, but nothing you have
+    // walked past is greyed out — a veil over open country reads as fog, not as
+    // memory, and at a 18-tile sight radius it would cover most of the screen.
+    const daylight = !!state.dungeon.overworld;
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
         if (!state.explored[y][x]) continue;
         R.drawTile(ctx, state, x, y);
-        if (!R.isVisible(state, x, y)) {
+        if (!daylight && !R.isVisible(state, x, y)) {
           ctx.fillStyle = 'rgba(8,5,10,0.6)';
           ctx.fillRect(x * TS, y * TS, TS, TS);
         }
@@ -189,13 +193,15 @@
 
     ctx.restore();
 
-    // Player-centered light vignette (screen space).
+    // Player-centered light vignette (screen space). Underground it is the
+    // torchlight falloff and carries most of the mood; outdoors it survives only
+    // as a faint corner darkening, or the continent would look like a cave.
     const px = p.x - camX;
     const py = p.y - camY;
-    const vr = Math.max(view.w, view.h) * 0.62;
-    const grad = ctx.createRadialGradient(px, py, vr * 0.28, px, py, vr);
+    const vr = Math.max(view.w, view.h) * (daylight ? 0.95 : 0.62);
+    const grad = ctx.createRadialGradient(px, py, vr * (daylight ? 0.55 : 0.28), px, py, vr);
     grad.addColorStop(0, 'rgba(0,0,0,0)');
-    grad.addColorStop(1, 'rgba(4,2,6,0.88)');
+    grad.addColorStop(1, daylight ? 'rgba(10,8,14,0.34)' : 'rgba(4,2,6,0.88)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, view.w, view.h);
 

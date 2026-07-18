@@ -15,6 +15,7 @@
       state.treeOpen = false;
       state.boardOpen = false;
       state.statsOpen = false;
+      state.mapOpen = false;
     }
     if (state.dead) return;
 

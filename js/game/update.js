@@ -129,15 +129,21 @@
     // Menu toggles and belt keys are local-player UI concerns (clients own these in Phase 2).
     if (localIn.pressed.has('inv')) {
       state.invOpen = !state.invOpen;
-      if (state.invOpen) state.treeOpen = state.boardOpen = state.statsOpen = false;
+      if (state.invOpen) state.treeOpen = state.boardOpen = state.statsOpen = state.mapOpen = false;
     }
     if (localIn.pressed.has('tree')) {
       state.treeOpen = !state.treeOpen;
-      if (state.treeOpen) state.invOpen = state.boardOpen = state.statsOpen = false;
+      if (state.treeOpen) state.invOpen = state.boardOpen = state.statsOpen = state.mapOpen = false;
     }
     if (localIn.pressed.has('stats')) {
       state.statsOpen = !state.statsOpen;
-      if (state.statsOpen) state.invOpen = state.treeOpen = state.boardOpen = false;
+      if (state.statsOpen) state.invOpen = state.treeOpen = state.boardOpen = state.mapOpen = false;
+    }
+    // The world map is only meaningful out on the continent; underground the
+    // minimap already shows the whole floor.
+    if (localIn.pressed.has('map') && state.inWorld) {
+      state.mapOpen = !state.mapOpen;
+      if (state.mapOpen) state.invOpen = state.treeOpen = state.boardOpen = state.statsOpen = false;
     }
     for (let i = 0; i < 4; i++) {
       if (localIn.pressed.has('belt' + i)) Game.useBelt(state, i);
@@ -151,7 +157,7 @@
       if (!pl.dead && !pl.down) updatePlayerAlways(state, pl, dt);
     }
 
-    if (state.invOpen || state.treeOpen || state.boardOpen || state.statsOpen) {
+    if (state.invOpen || state.treeOpen || state.boardOpen || state.statsOpen || state.mapOpen) {
       // Game world pauses while rummaging through bags, pondering the tree, or
       // reading the notices. Returning here also freezes the proximity flags
       // below, so the board stays live while you read it.
@@ -344,6 +350,10 @@
   function updateWorld(state, dt) {
     state.portalCdT = Math.max(0, state.portalCdT - dt);
     for (const po of state.portals) po.armT = Math.max(0, po.armT - dt);
+
+    // Overworld: move the activation set before anything reads the monster list,
+    // so a chunk that just came live ticks on the same frame it was populated.
+    if (state.inWorld) G.worldUpdate(state, dt);
 
     // Flow field for AI + fog-of-war visibility (recomputed a few times per second),
     // seeded from every living player so monsters route to whoever is closest.
