@@ -9,6 +9,7 @@
 
 const { Game } = require('./sim.js');
 const Protocol = require('./protocol.js');
+const Character = require('./character.js');
 
 const TS = 32; // Dungeon.TILE_SIZE — the sim's world units per tile.
 
@@ -69,21 +70,29 @@ class Room {
   }
 
   // Returns {id, player}, or null when the room is full — a full room is an
-  // ordinary outcome the server reports, not an exception.
+  // ordinary outcome the server reports, not an exception. `opts.character` is a
+  // stored blob (Phase 3): when present the player loads with its progression, and
+  // the host's saved bag seeds the room's (shared) bag so their gold/items persist.
   join(opts) {
     if (this.isFull) return null;
     const id = `p${this.seat++}`;
-    const p = freshPlayer(id, opts);
+    const isHost = this.playerCount === 0;
+    const p = opts && opts.character ? Character.playerFromCharacter(opts.character, id) : freshPlayer(id, opts);
+    if (opts && opts.character && isHost && opts.character.bag) {
+      // The room bag is shared in Phase 3; the host owns it. Guests keep their own
+      // stored bag frozen server-side (see the save path) so co-op can't clobber it.
+      this.state.bag = opts.character.bag;
+    }
     const entry = this.state.dungeon.entry;
     // Fan joiners around the entry tile so two players never occupy one point.
     const a = (this.playerCount / Room.MAX_PLAYERS) * Math.PI * 2;
-    const spread = this.playerCount === 0 ? 0 : 14;
+    const spread = isHost ? 0 : 14;
     p.x = (entry.x + 0.5) * TS + Math.cos(a) * spread;
     p.y = (entry.y + 0.5) * TS + Math.sin(a) * spread;
     this.state.players.push(p);
     this.syncLocalAlias();
     this.inputs.set(id, idleInput());
-    return { id, player: p };
+    return { id, player: p, isHost };
   }
 
   leave(id) {

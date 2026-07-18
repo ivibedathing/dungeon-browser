@@ -27,16 +27,38 @@ class Client {
     this.errors = [];
     this.closed = null;
     this.seq = 0;
+    this.authed = null;
+    this.characters = null;
+    this.selected = null;
+    this.authErrors = [];
+    this.charErrors = [];
     this.ws.on('message', (raw) => {
       const msg = JSON.parse(raw);
       (this.byType[msg.t] ||= []).push(msg);
       if (msg.t === 'snapshot') this.snapshots.push(msg);
       if (msg.t === 'welcome') this.welcome = msg;
       if (msg.t === 'error') this.errors.push(msg);
+      if (msg.t === 'authed') { this.authed = msg; this.characters = msg.characters; }
+      if (msg.t === 'characters') this.characters = msg.characters;
+      if (msg.t === 'selected') this.selected = msg;
+      if (msg.t === 'authError') this.authErrors.push(msg);
+      if (msg.t === 'charError') this.charErrors.push(msg);
     });
     this.ws.on('close', (code) => {
       this.closed = code;
     });
+  }
+  register(username, password, name) {
+    this.send({ t: 'register', username, password, name, shirt: '#4a5578' });
+  }
+  login(username, password) {
+    this.send({ t: 'login', username, password });
+  }
+  createChar(slot, name) {
+    this.send({ t: 'createChar', slot, name, shirt: '#4a5578' });
+  }
+  selectChar(slot) {
+    this.send({ t: 'selectChar', slot });
   }
   open() {
     return new Promise((resolve, reject) => {
@@ -290,4 +312,70 @@ test('a leaving client is removed and its empty room is reaped', async (t) => {
 
   host.close();
   assert.ok(await until(() => !srv.rooms.has(code), 4000), 'the empty room was reaped after the last player left');
+});
+
+test('register → create → select → join loads the stored character into the room', async (t) => {
+  const srv = await startServer();
+  await srv.ready;
+  const url = `ws://127.0.0.1:${srv.port}`;
+  t.after(() => srv.close());
+
+  const c = new Client(url);
+  await c.open();
+  c.register('ashfall', 'a good password', 'Aldric');
+  assert.ok(await until(() => c.authed), 'registered and got a session token');
+  assert.ok(c.authed.token && c.authed.token.length > 20, 'token issued');
+  assert.deepEqual(c.characters, [], 'no characters yet');
+
+  c.createChar(0, 'Aldric');
+  assert.ok(await until(() => c.characters && c.characters.length === 1), 'character created and listed');
+
+  // Bump the stored character to a non-starter level so the load is unmistakable.
+  // Get the account id the store-agnostic way (works for MemStore and Postgres).
+  const account = await srv.store.verifyLogin('ashfall', 'a good password');
+  const accountId = account.id;
+  const blob = await srv.store.loadCharacter(accountId, 0);
+  blob.floor = 3;
+  blob.player.level = 7;
+  blob.player.xp = 123;
+  await srv.store.saveCharacter(accountId, 0, blob);
+
+  // Joining without selecting first is refused with guidance, not a kick.
+  c.join('Aldric');
+  assert.ok(await until(() => c.charErrors.some((e) => e.reason === 'no_selection')), 'join before select asks to pick a character');
+  assert.equal(c.welcome, null, 'no room joined yet');
+
+  c.selectChar(0);
+  assert.ok(await until(() => c.selected && c.selected.slot === 0), 'character selected');
+  c.join('Aldric');
+  assert.ok(await until(() => c.welcome), 'joined a room');
+  assert.equal(c.welcome.slot, 0, 'welcome echoes the character slot');
+
+  const player = srv.rooms.get(c.welcome.code).state.players[0];
+  assert.equal(player.level, 7, 'the room hero loaded at the stored level');
+  assert.equal(player.xp, 123, 'and xp');
+});
+
+test('login rejects wrong credentials without revealing which field is wrong', async (t) => {
+  const srv = await startServer();
+  await srv.ready;
+  const url = `ws://127.0.0.1:${srv.port}`;
+  t.after(() => srv.close());
+
+  const a = new Client(url);
+  await a.open();
+  a.register('bo_the_bold', 'the right password', 'Bo');
+  assert.ok(await until(() => a.authed), 'registered');
+
+  const b = new Client(url);
+  await b.open();
+  b.login('bo_the_bold', 'the wrong password');
+  assert.ok(await until(() => b.authErrors.length > 0), 'got an auth error');
+  assert.equal(b.authErrors[0].reason, 'bad_credentials', 'generic reason, no user-vs-pass leak');
+
+  // A duplicate registration is reported, not a crash.
+  const c = new Client(url);
+  await c.open();
+  c.register('BO_THE_BOLD', 'another password', 'Imposter');
+  assert.ok(await until(() => c.authErrors.some((e) => e.reason === 'taken')), 'duplicate username (any case) refused');
 });
