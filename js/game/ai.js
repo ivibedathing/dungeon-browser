@@ -53,7 +53,7 @@
     const mtx = Math.floor(m.x / TS);
     const mty = Math.floor(m.y / TS);
     const flow = state.flow.field;
-    const flowDist = flow && flow[mty] ? flow[mty][mtx] : Infinity;
+    const flowDist = Dungeon.flowAt(flow, mtx, mty);
 
     if (!m.aggroed && flowDist * TS <= m.aggro) m.aggroed = true;
 
@@ -126,7 +126,7 @@
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const nx = mtx + dx;
         const ny = mty + dy;
-        const v = flow[ny] ? flow[ny][nx] : Infinity;
+        const v = Dungeon.flowAt(flow, nx, ny);
         if (v < best) {
           best = v;
           bx = nx;

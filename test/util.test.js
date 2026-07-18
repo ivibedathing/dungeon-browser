@@ -59,3 +59,45 @@ test('clamp and dist2 helpers', () => {
   assert.equal(U.clamp(2, 0, 3), 2);
   assert.equal(U.dist2(0, 0, 3, 4), 25);
 });
+
+// ---- Value noise (overworld foundations) ----
+// These are the properties the chunked world leans on: a sample must be a pure
+// function of (seed, x, y) with no lattice seams, or terrain disagrees with
+// itself across a chunk border depending on which chunk generated first.
+
+test('hash2 is deterministic and spreads across the uint32 range', () => {
+  assert.equal(U.hash2(7, 12, 34), U.hash2(7, 12, 34), 'same input, same output');
+  assert.notEqual(U.hash2(7, 12, 34), U.hash2(8, 12, 34), 'seed matters');
+  assert.notEqual(U.hash2(7, 12, 34), U.hash2(7, 34, 12), 'x and y are not symmetric');
+  const seen = new Set();
+  for (let x = 0; x < 40; x++) {
+    for (let y = 0; y < 40; y++) seen.add(U.hash2(1, x, y));
+  }
+  assert.ok(seen.size > 1550, `expected near-unique hashes over 1600 cells, got ${seen.size}`);
+});
+
+test('noise2 and fbm2 stay in [0,1) and are deterministic', () => {
+  for (let i = 0; i < 400; i++) {
+    const x = (i % 20) * 0.37;
+    const y = Math.floor(i / 20) * 0.53;
+    const n = U.noise2(99, x, y);
+    const f = U.fbm2(99, x, y, 4);
+    assert.ok(n >= 0 && n < 1, `noise2 out of range: ${n}`);
+    assert.ok(f >= 0 && f < 1, `fbm2 out of range: ${f}`);
+    assert.equal(U.noise2(99, x, y), n);
+    assert.equal(U.fbm2(99, x, y, 4), f);
+  }
+});
+
+test('noise2 has no seam across integer lattice boundaries', () => {
+  // Approaching an integer from below must converge on the value AT the integer.
+  // A hash read straight off floor(x) — the naive implementation — jumps here.
+  for (const k of [1, 5, 17, -3]) {
+    const at = U.noise2(4242, k, 2.5);
+    const just = U.noise2(4242, k - 1e-6, 2.5);
+    assert.ok(Math.abs(at - just) < 1e-4, `seam at x=${k}: ${just} vs ${at}`);
+    const atY = U.noise2(4242, 2.5, k);
+    const justY = U.noise2(4242, 2.5, k - 1e-6);
+    assert.ok(Math.abs(atY - justY) < 1e-4, `seam at y=${k}: ${justY} vs ${atY}`);
+  }
+});

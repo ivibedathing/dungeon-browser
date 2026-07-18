@@ -543,17 +543,20 @@
     // see", so one source is correct here.
     function refreshFog(rs) {
       const grid = rs.dungeon.grid;
-      rs.flow.field = Dungeon.flowFieldMulti(grid, [{ x: Math.floor(rs.player.x / TS), y: Math.floor(rs.player.y / TS) }], 30);
+      const sources = [{ x: Math.floor(rs.player.x / TS), y: Math.floor(rs.player.y / TS) }];
+      const MAX = 30;
+      const rect = Dungeon.flowWindowRect(grid, sources, MAX);
+      rs.flow.field = Dungeon.flowFieldWindow(grid, sources, MAX, rect);
       const f = rs.flow.field;
-      for (let y = 0; y < rs.dungeon.height; y++) {
-        for (let x = 0; x < rs.dungeon.width; x++) {
-          if (f[y][x] <= 9) {
-            rs.explored[y][x] = true;
-            for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
-              const ny = y + dy;
-              const nx = x + dx;
-              if (rs.explored[ny] !== undefined && rs.explored[ny][nx] !== undefined) rs.explored[ny][nx] = true;
-            }
+      const sight = (rs.dungeon.sightTiles || 9) + 0;
+      for (let y = rect.y0; y <= rect.y1; y++) {
+        for (let x = rect.x0; x <= rect.x1; x++) {
+          if (Dungeon.flowAt(f, x, y) > sight) continue;
+          rs.explored[y][x] = true;
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+            const ny = y + dy;
+            const nx = x + dx;
+            if (rs.explored[ny] !== undefined && rs.explored[ny][nx] !== undefined) rs.explored[ny][nx] = true;
           }
         }
       }

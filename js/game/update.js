@@ -350,26 +350,30 @@
     state.flow.t -= dt;
     if (!state.flow.field || state.flow.t <= 0) {
       state.flow.t = 0.18;
-      state.flow.field = Dungeon.flowFieldMulti(
-        state.dungeon.grid,
-        state.players
-          .filter((pl) => !pl.dead && !pl.down)
-          .map((pl) => ({ x: Math.floor(pl.x / TS), y: Math.floor(pl.y / TS) })),
-        30
-      );
-      // Mark explored tiles (wall-aware visibility from the flow field).
+      const grid = state.dungeon.grid;
+      const sources = state.players
+        .filter((pl) => !pl.dead && !pl.down)
+        .map((pl) => ({ x: Math.floor(pl.x / TS), y: Math.floor(pl.y / TS) }));
+      const MAX = 30;
+      // The field is windowed to the party's bounding box plus reach. On a dungeon
+      // floor that is most of the grid and costs nothing; on the 2048² overworld it
+      // is the difference between 4.2M cells per rebuild and a few thousand.
+      const rect = Dungeon.flowWindowRect(grid, sources, MAX);
+      state.flow.field = Dungeon.flowFieldWindow(grid, sources, MAX, rect);
+      // Mark explored tiles (wall-aware visibility from the flow field), bounded by
+      // the same window — scanning the whole grid here is the other 4.2M-cell loop.
       const f = state.flow.field;
-      for (let y = 0; y < state.dungeon.height; y++) {
-        for (let x = 0; x < state.dungeon.width; x++) {
-          if (f[y][x] <= 9) {
-            state.explored[y][x] = true;
-            // Explored walls: mark walls adjacent to visible floor.
-            for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
-              const ny = y + dy;
-              const nx = x + dx;
-              if (state.explored[ny] !== undefined && state.explored[ny][nx] !== undefined) {
-                state.explored[ny][nx] = true;
-              }
+      const sight = (state.dungeon.sightTiles || 9) + 0;
+      for (let y = rect.y0; y <= rect.y1; y++) {
+        for (let x = rect.x0; x <= rect.x1; x++) {
+          if (Dungeon.flowAt(f, x, y) > sight) continue;
+          state.explored[y][x] = true;
+          // Explored walls: mark walls adjacent to visible floor.
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+            const ny = y + dy;
+            const nx = x + dx;
+            if (state.explored[ny] !== undefined && state.explored[ny][nx] !== undefined) {
+              state.explored[ny][nx] = true;
             }
           }
         }

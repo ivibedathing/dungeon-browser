@@ -557,6 +557,96 @@
 
   D.flowField = (grid, tx, ty, maxDist) => D.flowFieldMulti(grid, [{ x: tx, y: ty }], maxDist);
 
+  // The same BFS, but allocated only over `rect` — a whole-grid field is fine on a
+  // 120x120 floor and fatal on the 2048x2048 overworld, where it would be 4.2M
+  // cells rebuilt several times a second. Returns a window descriptor read through
+  // D.flowAt; anything outside reads Infinity.
+  //
+  // A window sized to the sources' bounding box expanded by maxDist + 2 loses
+  // nothing: no path of at most maxDist steps from a source can reach a tile
+  // outside it, so the clipped BFS agrees with the whole-grid one everywhere the
+  // window covers. `D.flowWindowRect` builds exactly that rect.
+  D.flowWindowRect = function (grid, sources, maxDist) {
+    const h = grid.length;
+    const w = grid[0].length;
+    if (!sources.length) return { x0: 0, y0: 0, x1: -1, y1: -1 };
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const s of sources) {
+      if (s.x < minX) minX = s.x;
+      if (s.y < minY) minY = s.y;
+      if (s.x > maxX) maxX = s.x;
+      if (s.y > maxY) maxY = s.y;
+    }
+    const pad = maxDist + 2;
+    return {
+      x0: Math.max(0, Math.floor(minX) - pad),
+      y0: Math.max(0, Math.floor(minY) - pad),
+      x1: Math.min(w - 1, Math.ceil(maxX) + pad),
+      y1: Math.min(h - 1, Math.ceil(maxY) + pad),
+    };
+  };
+
+  D.flowFieldWindow = function (grid, sources, maxDist, rect) {
+    const gh = grid.length;
+    const gw = grid[0].length;
+    const r = rect || D.flowWindowRect(grid, sources, maxDist);
+    const x0 = Math.max(0, r.x0 | 0);
+    const y0 = Math.max(0, r.y0 | 0);
+    const x1 = Math.min(gw - 1, r.x1 | 0);
+    const y1 = Math.min(gh - 1, r.y1 | 0);
+    const w = Math.max(0, x1 - x0 + 1);
+    const h = Math.max(0, y1 - y0 + 1);
+    const field = Array.from({ length: h }, () => new Array(w).fill(Infinity));
+    const flow = { field, x0, y0, w, h };
+    if (!w || !h) return flow;
+    const q = [];
+    for (const s of sources) {
+      const lx = s.x - x0;
+      const ly = s.y - y0;
+      if (lx < 0 || ly < 0 || lx >= w || ly >= h) continue;
+      if (!WALKABLE(grid[s.y][s.x])) continue;
+      if (field[ly][lx] === 0) continue;
+      field[ly][lx] = 0;
+      q.push([lx, ly]);
+    }
+    let head = 0;
+    while (head < q.length) {
+      const [x, y] = q[head++];
+      const d = field[y][x];
+      if (d >= maxDist) continue;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        if (field[ny][nx] !== Infinity) continue;
+        if (!WALKABLE(grid[ny + y0][nx + x0])) continue;
+        field[ny][nx] = d + 1;
+        q.push([nx, ny]);
+      }
+    }
+    return flow;
+  };
+
+  // The one way to read a flow field. Accepts either a windowed field from
+  // flowFieldWindow or a plain whole-grid array from flowFieldMulti, so dungeon
+  // floors and the overworld share every consumer.
+  D.flowAt = function (flow, x, y) {
+    if (!flow) return Infinity;
+    if (flow.field) {
+      const lx = x - flow.x0;
+      const ly = y - flow.y0;
+      if (lx < 0 || ly < 0 || lx >= flow.w || ly >= flow.h) return Infinity;
+      return flow.field[ly][lx];
+    }
+    const row = flow[y];
+    if (!row) return Infinity;
+    const v = row[x];
+    return v === undefined ? Infinity : v;
+  };
+
   if (typeof window !== 'undefined') window.Dungeon = D;
   if (typeof module !== 'undefined') module.exports = D;
 })();
