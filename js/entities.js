@@ -155,7 +155,7 @@
   };
 
   E.pickMonsterType = function (rng, floor) {
-    const pool = Object.entries(E.MONSTER_TYPES).filter(([, t]) => t.minFloor <= floor);
+    const pool = Object.entries(E.MONSTER_TYPES).filter(([, t]) => t.minFloor <= floor && t.weight > 0);
     const total = pool.reduce((s, [, t]) => s + t.weight, 0);
     let roll = rng() * total;
     for (const [name, t] of pool) {

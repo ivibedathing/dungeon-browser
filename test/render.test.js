@@ -59,6 +59,7 @@ test('full frame pipeline draws every entity/UI state without crashing', () => {
       x: p.x + 40 + i * 25,
       y: p.y + (i % 2 ? 30 : -30),
       attackT: 0, hitT: 0.1, lungeT: 0.1, wanderT: 1, wandA: 0, aggroed: i % 2 === 0, kbx: 0, kby: 0,
+      __gauntlet: true, // draw-coverage props; cleared after the combat phase below
     };
     m.hp = Math.ceil(m.maxHP / 2); // wounded → HP bars draw
     state.monsters.push(m);
@@ -91,6 +92,10 @@ test('full frame pipeline draws every entity/UI state without crashing', () => {
   for (let i = 0; i < 120; i++) frame();
   input.keys.space = false;
   assert.ok(state.kills > 0, 'swinging killed at least one adjacent monster');
+  // The manual gauntlet has served its draw purpose (every sprite branch ran
+  // above). Clear it so the survival-dependent UI phases below aren't racing a
+  // fast rusher's attacks — the real dungeon spawns still populate every draw.
+  state.monsters = state.monsters.filter((m) => !m.__gauntlet);
 
   // 2) Belt potion + heal aura frames.
   state.player.hp = Math.max(1, state.player.hp - 30);

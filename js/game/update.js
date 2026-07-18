@@ -274,6 +274,39 @@
       }
     }
 
+    // Ambush swarms: the first player to reach a rigged room's center springs it,
+    // and a pack of swarmlings bursts in from the edges already hunting.
+    if (state.ambushes) {
+      for (const amb of state.ambushes) {
+        if (amb.triggered) continue;
+        const trigX = (amb.cx + 0.5) * TS;
+        const trigY = (amb.cy + 0.5) * TS;
+        const rPx = amb.radius * TS;
+        const sprung = state.players.some((pl) => !pl.dead && U.dist2(pl.x, pl.y, trigX, trigY) <= rPx * rPx);
+        if (!sprung) continue;
+        amb.triggered = true;
+        for (const cell of amb.spawns) {
+          state.monsters.push({
+            ...Entities.makeMonster('swarmling', state.floor, false),
+            id: state.nextId++,
+            x: (cell.x + 0.5) * TS,
+            y: (cell.y + 0.5) * TS,
+            attackT: state.srand() * 0.3,
+            hitT: 0,
+            lungeT: 0,
+            wanderT: 0,
+            wandA: NaN,
+            aggroed: true, // commit instantly — this is the "react now" moment
+            kbx: 0,
+            kby: 0,
+          });
+        }
+        G.message(state, 'A swarm pours from the shadows!', '#ff7a3d');
+        G.sfx(state, 'roar');
+        state.shake = Math.min(9, state.shake + 4);
+      }
+    }
+
     // Monsters, then projectiles in flight.
     for (const m of [...state.monsters]) G.monsterUpdate(state, m, dt);
     G.updateProjectiles(state, dt);

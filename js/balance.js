@@ -27,6 +27,10 @@
     bat: { hp: 15, dmg: 5, speed: 108, xp: 9, minFloor: 1, weight: 22, size: 9, color: '#9a7ab8', aggro: 345, attackRange: 24, attackCd: 0.7 },
     brute: { hp: 68, dmg: 15, speed: 48, xp: 26, minFloor: 1, weight: 12, size: 16, color: '#b5624d', aggro: 255, attackRange: 34, attackCd: 1.4 },
     wraith: { hp: 24, dmg: 11, speed: 95, xp: 20, minFloor: 3, weight: 18, size: 12, color: '#8fd0e8', aggro: 370, attackRange: 28, attackCd: 0.8 },
+    // Swarmling: never in the random pool (weight 0) — only ambush swarms spawn it.
+    // Frail and cheap, but faster than anything else and hits quick, so a pack
+    // that reaches you drains HP in a hurry. Huge aggro: it commits on sight.
+    swarmling: { hp: 8, dmg: 4, speed: 165, xp: 4, minFloor: 2, weight: 0, size: 7, color: '#d76b3f', aggro: 1400, attackRange: 20, attackCd: 0.55 },
   };
 
   // Per-floor scaling: hp ×(1 + hpLin·(f−1) + hpQuad·(f−1)²), dmg ×(1 + dmgLin·(f−1)),
@@ -53,6 +57,24 @@
   // ---- Dungeon population ----
   // Monsters per room: base + rand(0..rand) + min(depthCap, floor(depthRate·(f−1))).
   Balance.spawns = { base: 2, rand: 2, depthRate: 0.7, depthCap: 4, championChance: 0.12 };
+
+  // ---- Ambush swarms ----
+  // From minFloor on, some rooms hide a swarm: step past the trigger radius and a
+  // pack of swarmlings bursts in from the room's edges and sprints at you. Pack
+  // size grows a little each floor (packRate per floor, capped by packCap).
+  Balance.swarm = {
+    minFloor: 2,
+    roomChance: 0.32, // chance an eligible (non-entry, non-boss) room is an ambush
+    maxRooms: 2, // at most this many ambush rooms per floor
+    packBase: 6, // swarmlings at minFloor
+    packRand: 3, // + rand(0..packRand)
+    packRate: 0.8, // + floor(packRate·(f−minFloor)) more per deeper floor
+    packCap: 18, // hard ceiling on a single pack
+    triggerTiles: 3.4, // player within this many tiles of the room center springs it
+    ringMinTiles: 3.6, // pack spawns in a ring this far from center (just clear of the hero)…
+    ringMaxTiles: 7, // …out to here — close enough to rush in together on any room size
+    minRoomTiles: 30, // rooms smaller than this (w·h interior) never host a swarm
+  };
 
   // ---- Blacksmith ----
   Balance.upgrade = { dmgPerPlus: 0.08, maxPlus: 10 };
