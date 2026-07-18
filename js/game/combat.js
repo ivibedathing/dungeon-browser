@@ -30,7 +30,7 @@
   function rollDropsFor(state, m, ownerId) {
     const f = state.floor;
     const scatter = () => (state.srand() - 0.5) * 30;
-    const push = (o) => state.groundItems.push({ id: state.nextId++, ownerId, ...o });
+    const push = (o) => state.groundItems.push(G.tagWorldDrop(state, { id: state.nextId++, ownerId, ...o }));
     if (m.boss) {
       // Bosses always shower loot: two magic-or-better items plus a fat gold pile.
       for (let i = 0; i < 2; i++) {
@@ -70,9 +70,9 @@
     const scatter = () => (state.srand() - 0.5) * 22;
     for (const d of Props.rollLoot(prop.type, state.floor, state.srand)) {
       if (d.kind === 'gold') {
-        state.groundItems.push({ id: state.nextId++, kind: 'gold', amount: d.amount, x: prop.x + scatter(), y: prop.y + scatter() });
+        state.groundItems.push(G.tagWorldDrop(state, { id: state.nextId++, kind: 'gold', amount: d.amount, x: prop.x + scatter(), y: prop.y + scatter() }));
       } else {
-        state.groundItems.push({ id: state.nextId++, kind: 'item', item: d.item, x: prop.x + scatter(), y: prop.y + scatter() });
+        state.groundItems.push(G.tagWorldDrop(state, { id: state.nextId++, kind: 'item', item: d.item, x: prop.x + scatter(), y: prop.y + scatter() }));
       }
     }
   }

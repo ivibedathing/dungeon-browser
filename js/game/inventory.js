@@ -78,7 +78,7 @@
     if (!item) return;
     const p = state.player;
     const a = state.srand() * Math.PI * 2;
-    state.groundItems.push({ id: state.nextId++, kind: 'item', item, x: p.x + Math.cos(a) * 24, y: p.y + Math.sin(a) * 24 });
+    state.groundItems.push(G.tagWorldDrop(state, { id: state.nextId++, kind: 'item', item, x: p.x + Math.cos(a) * 24, y: p.y + Math.sin(a) * 24 }));
     G.message(state, `Dropped ${item.name}.`, '#9aa');
     G.sfx(state, 'drop');
   };
@@ -113,7 +113,7 @@
     row.splice(index, 1);
     const p = state.player;
     const a = state.srand() * Math.PI * 2;
-    state.groundItems.push({ id: state.nextId++, kind: 'item', item: potion, x: p.x + Math.cos(a) * 24, y: p.y + Math.sin(a) * 24 });
+    state.groundItems.push(G.tagWorldDrop(state, { id: state.nextId++, kind: 'item', item: potion, x: p.x + Math.cos(a) * 24, y: p.y + Math.sin(a) * 24 }));
     G.message(state, `Dropped ${potion.name}.`, '#9aa');
     G.sfx(state, 'drop');
     return true;

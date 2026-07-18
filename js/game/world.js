@@ -191,6 +191,21 @@
     state.monsters = state.monsters.filter((m) => m.chunk !== k);
     if (state.props) state.props = state.props.filter((pr) => pr.chunk !== k);
     if (state.dungeon.torches) state.dungeon.torches = state.dungeon.torches.filter((t) => t.chunk !== k);
+    // Loot left on the ground goes with its chunk. On a dungeon floor the drop
+    // pile is bounded by the floor; out here it is bounded by nothing, and a
+    // long roam leaves thousands of items scattered across the continent that
+    // are iterated (and array-copied) every frame by the gold magnet and the
+    // renderer. Walk away from your loot and you have left it behind.
+    if (state.groundItems) state.groundItems = state.groundItems.filter((g) => g.chunk !== k);
+  };
+
+  // Tag a dropped item with the chunk it fell in, so deactivation can reclaim it.
+  // Called from the drop paths; a no-op anywhere but the overworld.
+  G.tagWorldDrop = function tagWorldDrop(state, item) {
+    if (!state.inWorld || !state.world) return item;
+    const c = World.chunkOf(Math.floor(item.x / TS), Math.floor(item.y / TS));
+    if (World.inBounds(c.cx, c.cy)) item.chunk = World.chunkKey(c.cx, c.cy);
+    return item;
   };
 
   // One frame of world upkeep: move the activation set, keep the terrain ahead of

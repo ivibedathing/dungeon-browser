@@ -1111,3 +1111,43 @@ test('across many seeds the hero starts in the open and can walk anywhere', () =
     assert.deepEqual(unreached, [], `seed ${seed} boxes the hero in: ${unreached.join(' ')}`);
   }
 });
+
+test('loot left behind goes with its chunk, so a long roam accumulates nothing', () => {
+  // On a dungeon floor the drop pile is bounded by the floor. Out here it was
+  // bounded by nothing: roaming and fighting left thousands of items scattered
+  // across the continent, every one of them iterated — and array-copied — by the
+  // gold magnet and the renderer on every single frame.
+  let s = Game.newSoloRun(999);
+  let kills = 0;
+  for (let k = 0; k < 12; k++) {
+    const c = World.chunkCenter(14 + ((k * 3) % 16), 14 + ((k * 5) % 16));
+    const spot = G.findOpenTile(s.world.world, c.x, c.y);
+    s.player.x = (spot.x + 0.5) * TS;
+    s.player.y = (spot.y + 0.5) * TS;
+    s = pump(s, 3);
+    for (const m of [...s.monsters]) {
+      G.hitMonster(s, m, 99999, s.player);
+      kills++;
+    }
+    s = pump(s, 2);
+  }
+  assert.ok(kills > 100, `only ${kills} kills — the roam did not find enough to fight`);
+  for (const g of s.groundItems) {
+    assert.ok(g.chunk === undefined || s.world.active.has(g.chunk), 'loot outlived its chunk');
+  }
+  // What is left is the loot lying in the live chunks, which is the point — the
+  // pile is bounded by the activation radius rather than by the session. Before
+  // the fix this was ~1600 and climbing.
+  assert.ok(
+    s.groundItems.length < 300,
+    `${s.groundItems.length} items still on the ground after ${kills} kills — loot is leaking`
+  );
+});
+
+test('loot dropped on a dungeon floor is untagged and never reclaimed', () => {
+  // The chunk tag is an overworld concept; a floor must behave exactly as before.
+  const s = Game.newRun(11);
+  const m = s.monsters[0];
+  G.hitMonster(s, m, 99999, s.player);
+  for (const g of s.groundItems) assert.equal(g.chunk, undefined, 'a floor drop got a chunk tag');
+});
