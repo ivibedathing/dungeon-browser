@@ -149,6 +149,16 @@
       net._send({ t: 'join', name, shirt: shirt || undefined, code: code || undefined });
     };
 
+    net.close = function () {
+      if (net._ws && net._ws.close) {
+        try {
+          net._ws.close();
+        } catch {
+          /* already gone */
+        }
+      }
+    };
+
     // ---- Account & character senders (Phase 3) ----
     net.register = function (username, password, name, shirt) {
       net.authError = null;
