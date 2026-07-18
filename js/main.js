@@ -50,7 +50,13 @@
   // ONLINE runtime.
   let net = null;
   let netState = null;
-  const SERVER_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + (location.hostname || '127.0.0.1') + ':8080';
+  // Same-origin when the page was served by our server (Phase 4.5 Track B: http + ws
+  // share one port), so an HTTPS deploy behind a proxy upgrades to wss:// on :443 with
+  // no port constant. Falls back to :8080 for dev where the client is served out-of-band
+  // (python http on another port) or from file://.
+  const wsProto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+  const servedByUs = (location.protocol === 'http:' || location.protocol === 'https:') && location.host;
+  const SERVER_URL = servedByUs ? wsProto + location.host : wsProto + (location.hostname || '127.0.0.1') + ':8080';
 
   const savedRun = Save.load();
   let state = savedRun ? Game.fromSave(savedRun) : Game.newRun((Math.random() * 0x7fffffff) | 0);

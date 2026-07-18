@@ -9,7 +9,10 @@
 // Embed in tests: createServer({ port: 0 }) → { wss, rooms, port, close }.
 'use strict';
 
+const http = require('node:http');
+const path = require('node:path');
 const { WebSocketServer } = require('ws');
+const { createStatic } = require('./static.js');
 const Protocol = require('./protocol.js');
 const { Room } = require('./room.js');
 const Character = require('./character.js');
@@ -39,7 +42,16 @@ function createServer(opts = {}) {
   const ready = Promise.resolve(store.init ? store.init() : undefined);
   const onError = opts.onError || ((err) => console.error('[server]', err && err.message ? err.message : err));
 
-  const wss = new WebSocketServer({ port, maxPayload: Protocol.MAX_MSG_BYTES });
+  // Serve the client and the WebSocket on ONE origin: an http listener handles static
+  // GETs, and the ws server rides its `upgrade` events. `serveStatic: false` (or a
+  // missing client root) leaves the http server answering 404s — the ws still works.
+  const staticHandler = opts.serveStatic === false ? null : createStatic({ root: path.join(__dirname, '..') });
+  const httpServer = http.createServer((req, res) => {
+    if (staticHandler && staticHandler(req, res)) return;
+    res.writeHead(404, { 'Content-Type': 'text/plain' }).end('not found');
+  });
+  const wss = new WebSocketServer({ server: httpServer, maxPayload: Protocol.MAX_MSG_BYTES });
+  httpServer.listen(port);
   const rooms = new Map(); // code -> Room
 
   // Per-connection state hangs off the socket. Auth fields are null until a
@@ -353,10 +365,11 @@ function createServer(opts = {}) {
     clearInterval(ping);
     for (const ws of wss.clients) ws.terminate();
     await new Promise((resolve) => wss.close(resolve));
+    await new Promise((resolve) => httpServer.close(resolve));
     if (store.close) await store.close();
   }
 
-  const api = { wss, rooms, store, ready, close, tickHz, get port() { return wss.address() ? wss.address().port : port; } };
+  const api = { wss, httpServer, rooms, store, ready, close, tickHz, get port() { const a = httpServer.address(); return a ? a.port : port; } };
   return api;
 }
 
@@ -366,11 +379,12 @@ module.exports = { createServer };
 if (require.main === module) {
   const srv = createServer();
   const persistent = !!(process.env.DATABASE_URL);
-  srv.wss.on('listening', () => {
-    const addr = srv.wss.address();
-    console.log(`Dungeon Browser server listening on ws://0.0.0.0:${addr.port} (${srv.tickHz} Hz)`);
+  const announce = () => {
+    console.log(`Dungeon Browser server listening on http+ws://0.0.0.0:${srv.port} (${srv.tickHz} Hz) — serves the client and the WebSocket on one origin`);
     console.log(persistent ? '[store] Postgres persistence enabled (DATABASE_URL)' : '[store] in-memory store — accounts and characters are NOT persisted (set DATABASE_URL for Postgres)');
-  });
+  };
+  if (srv.httpServer.listening) announce();
+  else srv.httpServer.on('listening', announce);
   const shutdown = () => srv.close().then(() => process.exit(0));
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
