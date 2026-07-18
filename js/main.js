@@ -1,7 +1,7 @@
 // main.js — boot, canvas sizing, input capture, and the requestAnimationFrame loop.
-// A small screen machine gates play: menu → (creation | join) → playing. SOLO play
-// is exactly the offline game; ONLINE play talks to the Phase 1 server through Net,
-// predicting the local hero and interpolating everyone else.
+// A screen machine gates play: menu → (solo creation | online account → character
+// select → host/join) → playing. SOLO play is the offline localStorage game; ONLINE
+// play authenticates, loads a server-saved character, then joins a room.
 (function () {
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
@@ -26,50 +26,33 @@
     mouse: { x: -1, y: -1, click: false, rclick: false },
   };
 
-  // `keys.space` is the attack-held flag (named for its original binding); it now lives on M.
   const HELD = { KeyW: 'w', KeyA: 'a', KeyS: 's', KeyD: 'd', ArrowUp: 'w', ArrowLeft: 'a', ArrowDown: 's', ArrowRight: 'd', KeyM: 'space' };
   const EDGE = {
-    Space: 'dodge',
-    KeyE: 'interact',
-    KeyI: 'inv',
-    Tab: 'inv',
-    KeyB: 'inv',
-    KeyR: 'restart',
-    KeyQ: 'drink',
-    KeyT: 'portal',
-    KeyN: 'mute',
-    KeyK: 'tree',
-    KeyF: 'skill0',
-    KeyG: 'skill1',
-    KeyH: 'skill2',
-    Digit1: 'belt0',
-    Digit2: 'belt1',
-    Digit3: 'belt2',
-    Digit4: 'belt3',
-    Escape: 'esc',
+    Space: 'dodge', KeyE: 'interact', KeyI: 'inv', Tab: 'inv', KeyB: 'inv', KeyR: 'restart',
+    KeyQ: 'drink', KeyT: 'portal', KeyN: 'mute', KeyK: 'tree', KeyF: 'skill0', KeyG: 'skill1', KeyH: 'skill2',
+    Digit1: 'belt0', Digit2: 'belt1', Digit3: 'belt2', Digit4: 'belt3', Escape: 'esc',
   };
 
   // ---- Screen machine ----
-  // 'menu'     — solo/host/join chooser
-  // 'join'     — room-code entry
-  // 'creation' — name/shirt (then starts solo, hosts, or joins per pendingMode)
-  // 'playing'  — the game; mode is 'solo' or 'online'
+  // 'menu' | 'creation' (solo or online-create) | 'account' | 'charselect' | 'join' | 'playing'
   let screen = 'menu';
   let mode = 'solo';
-  let pendingMode = 'solo'; // what a creation confirm should launch
+  let pendingMode = 'solo'; // what a creation confirm launches: 'solo' | 'createChar'
+  let pendingCreateSlot = null; // the slot an online create fills
+  let onlineIntent = null; // 'host' | 'join' — what to do once a character is chosen
   let joinCode = '';
   let netError = '';
+  let accountForm = null; // { mode, username, password, focus, t, error, busy }
 
   // ONLINE runtime.
   let net = null;
   let netState = null;
   const SERVER_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + (location.hostname || '127.0.0.1') + ':8080';
 
-  // The frozen backdrop shown behind the front-end panels.
   const savedRun = Save.load();
   let state = savedRun ? Game.fromSave(savedRun) : Game.newRun((Math.random() * 0x7fffffff) | 0);
 
-  // Character creation overlay.
+  // ---- Character creation (solo start, or online character create) ----
   let creation = null;
   function openCreation(prefill) {
     creation = { name: (prefill && prefill.name) || '', shirtIdx: 0, t: 0 };
@@ -83,9 +66,11 @@
     const name = creation.name.trim() || 'Wanderer';
     const shirt = UI.SHIRTS[creation.shirtIdx];
     creation = null;
-    if (pendingMode === 'host') startOnline(name, shirt, null);
-    else if (pendingMode === 'join') startOnline(name, shirt, joinCode);
-    else {
+    if (pendingMode === 'createChar' && net) {
+      net.createChar(pendingCreateSlot, name, shirt);
+      pendingCreateSlot = null;
+      screen = 'charselect'; // the new character appears when the server replies
+    } else {
       state = Game.newRun((Math.random() * 0x7fffffff) | 0, { name, shirt });
       Save.write(state);
       mode = 'solo';
@@ -94,42 +79,42 @@
   }
   function creationKey(e) {
     if (e.key === 'Enter') confirmCreation();
-    else if (e.key === 'Escape') {
-      creation = null;
-      screen = 'menu';
-    } else if (e.key === 'Backspace') creation.name = creation.name.slice(0, -1);
+    else if (e.key === 'Escape') { creation = null; screen = net ? 'charselect' : 'menu'; }
+    else if (e.key === 'Backspace') creation.name = creation.name.slice(0, -1);
     else if (e.key === 'ArrowLeft') creation.shirtIdx = (creation.shirtIdx + UI.SHIRTS.length - 1) % UI.SHIRTS.length;
     else if (e.key === 'ArrowRight') creation.shirtIdx = (creation.shirtIdx + 1) % UI.SHIRTS.length;
     else if (e.key.length === 1 && /[\w '\-]/.test(e.key) && creation.name.length < 14) creation.name += e.key;
   }
 
   // ---- Online lifecycle ----
-  function startOnline(name, shirt, code) {
+  function startConnect(intent) {
+    onlineIntent = intent;
     netError = '';
     net = Net.create({ now: () => performance.now() });
     net.connect(SERVER_URL, window.WebSocket);
     if (net.status === 'error') {
-      // e.g. the offline artifact build: WebSocket blocked by CSP.
-      netError = friendlyError(net.error);
+      netError = friendlyError(net.error); // e.g. offline artifact build (no WebSocket)
       net = null;
       screen = 'menu';
       return;
     }
-    net.onOpen = () => net.join(name, shirt, code);
-    netState = net.freshRenderState({ name, shirt });
-    mode = 'online';
-    screen = 'playing';
+    // Auto-resume a stored session the moment the socket opens; if it's dead the
+    // server replies authError and we fall to the login form.
+    net.onOpen = () => {
+      const tok = net.storedToken();
+      if (tok) net.resume(tok);
+    };
+    accountForm = { mode: 'login', username: '', password: '', focus: 'username', t: 0, error: '', busy: false };
+    screen = 'account';
   }
   function teardownNet() {
     if (net && net._ws && net._ws.close) {
-      try {
-        net._ws.close();
-      } catch (e) {
-        /* already gone */
-      }
+      try { net._ws.close(); } catch (e) { /* already gone */ }
     }
     net = null;
     netState = null;
+    accountForm = null;
+    onlineIntent = null;
   }
   function backToMenu() {
     teardownNet();
@@ -138,31 +123,57 @@
   }
   function friendlyError(code) {
     switch (code) {
-      case 'no_room':
-        return 'No room with that code.';
-      case 'room_full':
-        return 'That room is full.';
-      case 'rate_limit':
-        return 'Disconnected — too many messages.';
-      case 'bad_message':
-        return 'Disconnected — protocol error.';
-      case 'no_websocket':
-        return 'Online play is unavailable in this build.';
-      default:
-        return 'Connection lost.';
+      case 'no_room': return 'No room with that code.';
+      case 'room_full': return 'That room is full.';
+      case 'rate_limit': return 'Disconnected — too many messages.';
+      case 'bad_message': return 'Disconnected — protocol error.';
+      case 'no_websocket': return 'Online play is unavailable in this build.';
+      case 'taken': return 'That username is taken.';
+      case 'bad_credentials': return 'Wrong username or password.';
+      case 'bad_session': return 'Your session expired — please log in.';
+      default: return 'Connection lost.';
     }
+  }
+  function selectedChar() {
+    if (!net || net.selectedSlot == null || !net.characters) return null;
+    return net.characters.find((c) => c.slot === net.selectedSlot) || null;
+  }
+  function enterRoom(code) {
+    const c = selectedChar();
+    const name = (c && c.name) || (net.account && net.account.username) || 'Wanderer';
+    net.join(name, '#4a5578', code || undefined);
+    netState = net.freshRenderState({ name, shirt: '#4a5578' });
+    mode = 'online';
+    screen = 'playing';
+  }
+  function submitAccount() {
+    const f = accountForm;
+    if (!f.username || f.password.length < 8) {
+      f.error = 'A username and an 8+ character password, please.';
+      return;
+    }
+    f.busy = true;
+    f.error = '';
+    if (f.mode === 'register') net.register(f.username, f.password, f.username);
+    else net.login(f.username, f.password);
   }
 
   // ---- Input listeners (branch on screen) ----
   window.addEventListener('keydown', (e) => {
-    if (screen === 'creation') {
-      creationKey(e);
+    if (screen === 'creation') { creationKey(e); e.preventDefault(); return; }
+    if (screen === 'account') {
+      const f = accountForm;
+      if (e.key === 'Enter') submitAccount();
+      else if (e.key === 'Escape') backToMenu();
+      else if (e.key === 'Tab') f.focus = f.focus === 'username' ? 'password' : 'username';
+      else if (e.key === 'Backspace') f[f.focus] = f[f.focus].slice(0, -1);
+      else if (e.key.length === 1 && f[f.focus].length < 64 && /\S|.| /.test(e.key)) f[f.focus] += e.key;
       e.preventDefault();
       return;
     }
     if (screen === 'join') {
       if (e.key === 'Enter') doConnectFromJoin();
-      else if (e.key === 'Escape') screen = 'menu';
+      else if (e.key === 'Escape') screen = 'charselect';
       else if (e.key === 'Backspace') joinCode = joinCode.slice(0, -1);
       else if (/^[a-zA-Z0-9]$/.test(e.key) && joinCode.length < 6) joinCode += e.key.toUpperCase();
       e.preventDefault();
@@ -170,14 +181,8 @@
     }
     if (screen !== 'playing') return;
     if (e.key === 'Control') input.keys.ctrl = true;
-    if (HELD[e.code]) {
-      input.keys[HELD[e.code]] = true;
-      e.preventDefault();
-    }
-    if (EDGE[e.code]) {
-      if (!e.repeat) input.pressed.add(EDGE[e.code]);
-      e.preventDefault();
-    }
+    if (HELD[e.code]) { input.keys[HELD[e.code]] = true; e.preventDefault(); }
+    if (EDGE[e.code]) { if (!e.repeat) input.pressed.add(EDGE[e.code]); e.preventDefault(); }
   });
   window.addEventListener('keyup', (e) => {
     if (e.key === 'Control') input.keys.ctrl = false;
@@ -192,40 +197,57 @@
     input.mouse.y = e.clientY;
   });
 
-  function inRect(r, x, y) {
-    return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
-  }
+  const inRect = (r, x, y) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 
   canvas.addEventListener('mousedown', (e) => {
-    const x = e.clientX;
-    const y = e.clientY;
+    const x = e.clientX, y = e.clientY;
 
     if (screen === 'menu') {
       const L = UI.menuLayout(view);
       if (inRect(L.solo, x, y)) {
         const saved = Save.load();
-        if (saved) {
-          state = Game.fromSave(saved);
-          mode = 'solo';
-          screen = 'playing';
-        } else {
-          pendingMode = 'solo';
-          openCreation();
+        if (saved) { state = Game.fromSave(saved); mode = 'solo'; screen = 'playing'; }
+        else { pendingMode = 'solo'; openCreation(); }
+      } else if (inRect(L.host, x, y)) startConnect('host');
+      else if (inRect(L.join, x, y)) startConnect('join');
+      return;
+    }
+
+    if (screen === 'account') {
+      const L = UI.accountLayout(view);
+      const f = accountForm;
+      if (inRect(L.userBox, x, y)) f.focus = 'username';
+      else if (inRect(L.passBox, x, y)) f.focus = 'password';
+      else if (inRect(L.submit, x, y)) submitAccount();
+      else if (inRect(L.toggle, x, y)) { f.mode = f.mode === 'register' ? 'login' : 'register'; f.error = ''; }
+      else if (inRect(L.back, x, y)) backToMenu();
+      return;
+    }
+
+    if (screen === 'charselect') {
+      const L = UI.charSelectLayout(view);
+      if (inRect(L.back, x, y)) { backToMenu(); return; }
+      if (inRect(L.enter, x, y)) {
+        if (net.selectedSlot != null && selectedChar()) {
+          if (onlineIntent === 'join') { joinCode = ''; netError = ''; screen = 'join'; }
+          else enterRoom(null);
         }
-      } else if (inRect(L.host, x, y)) {
-        pendingMode = 'host';
-        openCreation();
-      } else if (inRect(L.join, x, y)) {
-        joinCode = '';
-        netError = '';
-        screen = 'join';
+        return;
+      }
+      for (let i = 0; i < L.slots.length; i++) {
+        if (!inRect(L.slots[i], x, y)) continue;
+        const has = net.characters && net.characters.some((c) => c.slot === i);
+        if (e.button === 2 && has) net.deleteChar(i); // right-click deletes
+        else if (has) net.selectChar(i);
+        else { pendingMode = 'createChar'; pendingCreateSlot = i; openCreation(); }
+        return;
       }
       return;
     }
 
     if (screen === 'join') {
       const L = UI.joinLayout(view);
-      if (inRect(L.back, x, y)) screen = 'menu';
+      if (inRect(L.back, x, y)) screen = 'charselect';
       else if (inRect(L.connect, x, y)) doConnectFromJoin();
       return;
     }
@@ -233,10 +255,7 @@
     if (screen === 'creation') {
       const L = UI.creationLayout(view);
       for (let i = 0; i < L.swatches.length; i++) {
-        if (inRect(L.swatches[i], x, y)) {
-          creation.shirtIdx = i;
-          return;
-        }
+        if (inRect(L.swatches[i], x, y)) { creation.shirtIdx = i; return; }
       }
       if (inRect(L.begin, x, y)) confirmCreation();
       return;
@@ -249,12 +268,8 @@
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
   function doConnectFromJoin() {
-    if (joinCode.length < 4) {
-      netError = 'Codes are 4–6 characters.';
-      return;
-    }
-    pendingMode = 'join';
-    openCreation();
+    if (joinCode.length < 4) { netError = 'Codes are 4–6 characters.'; return; }
+    enterRoom(joinCode);
   }
 
   Sfx.setMuted(Save.getMuted());
@@ -262,22 +277,17 @@
   window.addEventListener('keydown', unlockAudio, { once: true });
   window.addEventListener('mousedown', unlockAudio, { once: true });
 
-  // Keep solo progress on tab close (online state lives on the server).
   window.addEventListener('beforeunload', () => {
     if (mode === 'solo' && state && !state.dead) Save.write(state);
   });
 
   // Debug/verification handles.
   window.__state = () => (mode === 'online' ? netState : state);
-  window.__setState = (s) => {
-    state = s;
-  };
+  window.__setState = (s) => { state = s; };
   window.__creation = () => creation;
   window.__screen = () => screen;
   window.__net = () => net;
-  window.__rtt = (ms) => {
-    if (net) net.latencyMs = ms | 0;
-  };
+  window.__rtt = (ms) => { if (net) net.latencyMs = ms | 0; };
   window.__input = input;
   window.__view = view;
   window.__mods = { Game, Items, Entities, Dungeon, U, Save, Sfx, Skills, Quests, Net };
@@ -309,19 +319,13 @@
   }
 
   function onlineFrame(nowMs) {
-    // Bail to the menu on a disconnect or a server-side kick.
     if (net.status === 'error' || net.status === 'closed') {
       netError = friendlyError(net.error);
       backToMenu();
       clearEdges();
       return;
     }
-    // Esc leaves the room.
-    if (input.pressed.has('esc')) {
-      backToMenu();
-      clearEdges();
-      return;
-    }
+    if (input.pressed.has('esc')) { backToMenu(); clearEdges(); return; }
 
     net.sendInput(input, nowMs);
     Game.applyEvents(netState, net.takeEvents());
@@ -341,15 +345,28 @@
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
 
-    // The world (a placeholder solo run) sits frozen behind the front-end panels.
-    if (screen === 'menu' || screen === 'join' || screen === 'creation') {
+    // Front-end screens draw over a frozen world backdrop.
+    if (screen !== 'playing') {
       Render.draw(ctx, state, view);
       if (screen === 'menu') {
         UI.drawMenu(ctx, view, input.mouse);
         if (netError) UI.drawNetBanner(ctx, view, netError, 'error');
+      } else if (screen === 'account') {
+        accountForm.t += dt;
+        // Advance to character select once authenticated (incl. a silent auto-resume).
+        if (net && net.authStatus === 'authed') { screen = 'charselect'; }
+        else {
+          if (net && net.authStatus === 'error' && net.authError) { accountForm.error = friendlyError(net.authError); accountForm.busy = false; net.authError = null; }
+          UI.drawAccount(ctx, view, accountForm, input.mouse);
+          if (net && net.status !== 'open' && !accountForm.error) UI.drawNetBanner(ctx, view, 'Connecting…', 'info');
+        }
+      } else if (screen === 'charselect') {
+        const canImport = !!Save.load();
+        UI.drawCharSelect(ctx, view, net ? net.characters : [], net ? net.selectedSlot : null, input.mouse, canImport);
+        if (net && net.charError) UI.drawNetBanner(ctx, view, net.charError === 'too_many' ? 'All 8 slots are full.' : 'Could not do that.', 'error');
       } else if (screen === 'join') {
         UI.drawJoin(ctx, view, joinCode, netError, input.mouse);
-      } else {
+      } else if (screen === 'creation') {
         creation.t += dt;
         UI.drawCreation(ctx, view, creation);
       }

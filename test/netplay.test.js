@@ -236,6 +236,49 @@ test('takeEvents yields each snapshot\'s juice exactly once', () => {
   assert.equal(net.takeEvents().length, 1, 'only the new snapshot\'s events');
 });
 
+// ---- Phase 3: client auth senders + token persistence ----
+
+function fakeStorage() {
+  const m = new Map();
+  return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) };
+}
+
+test('auth senders emit the right frames and stash the session token', () => {
+  const clock = { t: 1000 };
+  const sock = fakeSocket();
+  const storage = fakeStorage();
+  const net = Net.create({ now: () => clock.t, socket: sock, storage });
+
+  net.register('ashfall', 'a good password', 'Ash', '#4a5578');
+  assert.deepEqual(sock.sent.at(-1), { t: 'register', username: 'ashfall', password: 'a good password', name: 'Ash', shirt: '#4a5578' });
+  net.login('bo_the_bold', 'hunter2hunter2');
+  assert.equal(sock.sent.at(-1).t, 'login');
+  net.createChar(2, 'Cleric', '#3b6e4f', false);
+  assert.deepEqual(sock.sent.at(-1), { t: 'createChar', slot: 2, name: 'Cleric', shirt: '#3b6e4f', imported: false });
+  net.selectChar(2);
+  assert.deepEqual(sock.sent.at(-1), { t: 'selectChar', slot: 2 });
+
+  // An authed reply stores the token and character list, and persists the token.
+  net.onServerMessage({ t: 'authed', token: 'sekret-token-abcdefghijklmno', username: 'ashfall', characters: [{ slot: 0, name: 'Aldric', level: 3 }] });
+  assert.equal(net.authStatus, 'authed');
+  assert.equal(net.account.username, 'ashfall');
+  assert.equal(net.characters.length, 1);
+  assert.equal(storage.getItem('dungeon-browser.token.v1'), 'sekret-token-abcdefghijklmno', 'token persisted for auto-resume');
+  assert.equal(net.storedToken(), 'sekret-token-abcdefghijklmno');
+
+  // resume() with no argument reuses the stored token.
+  net.resume();
+  assert.deepEqual(sock.sent.at(-1), { t: 'resume', token: 'sekret-token-abcdefghijklmno' });
+
+  // A dead session clears the stored token so we stop auto-resuming a ghost.
+  net.onServerMessage({ t: 'authError', reason: 'bad_session' });
+  assert.equal(net.authStatus, 'error');
+  assert.equal(net.storedToken(), null, 'bad session forgets the token');
+
+  net.onServerMessage({ t: 'selected', slot: 0 });
+  assert.equal(net.selectedSlot, 0);
+});
+
 // ---- Task 3: render all players + remote render-state ----
 
 globalThis.Render = require('../js/render.js');

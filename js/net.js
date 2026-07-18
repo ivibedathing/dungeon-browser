@@ -57,8 +57,12 @@
     });
   }
 
+  const TOKEN_KEY = 'dungeon-browser.token.v1';
+
   function createNet(opts = {}) {
     const now = opts.now || (() => (typeof performance !== 'undefined' ? performance.now() : Date.now()));
+    // Injectable so tests drive token persistence without a real localStorage.
+    const storage = opts.storage !== undefined ? opts.storage : typeof localStorage !== 'undefined' ? localStorage : null;
 
     const net = {
       you: null,
@@ -70,7 +74,17 @@
       error: null,
       latencyMs: 0, // artificial one-way delay for LAN-RTT testing; 0 in production
 
+      // Account state (Phase 3).
+      account: null, // { username }
+      token: null, // opaque session token, persisted for auto-resume
+      characters: null, // [{slot,name,level,updatedAt,imported}]
+      selectedSlot: null,
+      authStatus: 'anon', // anon | authed | error
+      authError: null,
+      charError: null,
+
       onOpen: null, // caller hook fired once the socket is connected
+      _storage: storage,
       _now: now,
       _ws: opts.socket || null,
       _outbox: [], // frames queued while the socket is still connecting
@@ -135,6 +149,41 @@
       net._send({ t: 'join', name, shirt: shirt || undefined, code: code || undefined });
     };
 
+    // ---- Account & character senders (Phase 3) ----
+    net.register = function (username, password, name, shirt) {
+      net.authError = null;
+      net._send({ t: 'register', username, password, name: name || username, shirt: shirt || undefined });
+    };
+    net.login = function (username, password) {
+      net.authError = null;
+      net._send({ t: 'login', username, password });
+    };
+    net.resume = function (token) {
+      net.authError = null;
+      net._send({ t: 'resume', token: token || net.storedToken() });
+    };
+    net.logout = function () {
+      net._persistToken(null);
+      net.authStatus = 'anon';
+      net.account = null;
+      net.characters = null;
+      net.selectedSlot = null;
+    };
+    net.listChars = function () {
+      net._send({ t: 'listChars' });
+    };
+    net.createChar = function (slot, name, shirt, imported) {
+      net.charError = null;
+      net._send({ t: 'createChar', slot, name, shirt: shirt || undefined, imported: !!imported });
+    };
+    net.selectChar = function (slot) {
+      net.charError = null;
+      net._send({ t: 'selectChar', slot });
+    };
+    net.deleteChar = function (slot) {
+      net._send({ t: 'deleteChar', slot });
+    };
+
     // Receive path with the artificial-latency switch. Real arrivals are delayed by
     // latencyMs so a test / the RTT demo sees the same lag both directions.
     net._deliver = function (msg) {
@@ -163,8 +212,51 @@
           net.status = 'error';
           net.error = msg.reason || 'error';
           break;
+        case 'authed':
+          net.authStatus = 'authed';
+          net.authError = null;
+          net.account = { username: msg.username };
+          net.characters = msg.characters || [];
+          net.token = msg.token;
+          net._persistToken(msg.token);
+          break;
+        case 'characters':
+          net.characters = msg.characters || [];
+          break;
+        case 'selected':
+          net.selectedSlot = msg.slot;
+          break;
+        case 'authError':
+          net.authStatus = 'error';
+          net.authError = msg.reason || 'auth_error';
+          // A dead session must not keep auto-resuming; forget the bad token.
+          if (msg.reason === 'bad_session') net._persistToken(null);
+          break;
+        case 'charError':
+          net.charError = msg.reason || 'char_error';
+          break;
         default:
           break; // pong etc. — nothing to buffer
+      }
+    };
+
+    net._persistToken = function (token) {
+      net.token = token || null;
+      if (!net._storage) return;
+      try {
+        if (token) net._storage.setItem(TOKEN_KEY, token);
+        else net._storage.removeItem(TOKEN_KEY);
+      } catch {
+        /* private mode / quota — non-fatal */
+      }
+    };
+
+    net.storedToken = function () {
+      if (!net._storage) return null;
+      try {
+        return net._storage.getItem(TOKEN_KEY);
+      } catch {
+        return null;
       }
     };
 
