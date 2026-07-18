@@ -108,13 +108,63 @@
     for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) grid[y][x] = D.TILE.FLOOR;
   }
 
+  // A stair-stepped diagonal run from a to b. Each step is orthogonally adjacent to
+  // the last, so the corridor stays passable for circle-vs-tile collision even though
+  // it reads as a diagonal; whatever axis distance is left over is carved straight.
+  function carveDiag(grid, a, b) {
+    const sx = Math.sign(b.cx - a.cx) || 1;
+    const sy = Math.sign(b.cy - a.cy) || 1;
+    let x = a.cx;
+    let y = a.cy;
+    grid[y][x] = D.TILE.FLOOR;
+    while (x !== b.cx && y !== b.cy) {
+      x += sx;
+      grid[y][x] = D.TILE.FLOOR;
+      y += sy;
+      grid[y][x] = D.TILE.FLOOR;
+    }
+    carveH(grid, x, b.cx, y);
+    carveV(grid, y, b.cy, b.cx);
+  }
+
   function carveCorridor(grid, a, b, rng) {
-    if (rng() < 0.5) {
+    // Most links run diagonal now — pure L-bends everywhere are what made each floor
+    // read as a grid of right angles.
+    const roll = rng();
+    if (roll < 0.55) {
+      carveDiag(grid, a, b);
+    } else if (roll < 0.775) {
       carveH(grid, a.cx, b.cx, a.cy);
       carveV(grid, a.cy, b.cy, b.cx);
     } else {
       carveV(grid, a.cy, b.cy, a.cx);
       carveH(grid, a.cx, b.cx, b.cy);
+    }
+  }
+
+  // An irregular open cavern: lobes overlapping one central core, so it is always
+  // internally connected and its centre is always floor. Flagged `cavern` and kept
+  // out of the stairs and boss-arena picks, which assume a plain rectangle.
+  function cavernBox(rng, W, H) {
+    const w = U.randInt(rng, 14, 22);
+    const h = U.randInt(rng, 11, 17);
+    const x = U.randInt(rng, 3, W - w - 4);
+    const y = U.randInt(rng, 3, H - h - 4);
+    return { x, y, w, h, cx: x + Math.floor(w / 2), cy: y + Math.floor(h / 2), cavern: true };
+  }
+
+  function carveCavern(grid, rng, box) {
+    const { x, y, w, h } = box;
+    const core = { x: box.cx - 3, y: box.cy - 2, w: 7, h: 5 };
+    carveRoom(grid, core);
+    for (let k = 0; k < 5; k++) {
+      const lw = U.randInt(rng, 6, w - 2);
+      const lh = U.randInt(rng, 5, h - 2);
+      const lx = U.randInt(rng, x + 1, x + w - lw - 1);
+      const ly = U.randInt(rng, y + 1, y + h - lh - 1);
+      // Only lobes that actually touch the core get carved, or the cavern fragments.
+      if (lx > core.x + core.w || lx + lw < core.x || ly > core.y + core.h || ly + lh < core.y) continue;
+      carveRoom(grid, { x: lx, y: ly, w: lw, h: lh });
     }
   }
 
@@ -125,8 +175,9 @@
     a.y + a.h + 1 > b.y - 1;
 
   D.generateDungeon = function (seed, floor) {
-    const W = 60;
-    const H = 60;
+    // 120x120 — four times the area of the old 60x60 floors.
+    const W = 120;
+    const H = 120;
     const rng = U.mulberry32(((seed >>> 0) * 100003 + floor * 7919) >>> 0);
     const grid = Array.from({ length: H }, () => new Array(W).fill(D.TILE.WALL));
 
@@ -134,10 +185,21 @@
     // Past floor 10 the layout turns into a warren: many small chambers, extra loops.
     const deep = floor > 10;
     const rooms = [];
-    const TARGET = deep ? 19 : 13;
-    for (let attempt = 0; attempt < (deep ? 360 : 260) && rooms.length < TARGET; attempt++) {
-      const w = U.randInt(rng, deep ? 4 : 5, deep ? 7 : 11);
-      const h = U.randInt(rng, deep ? 4 : 5, deep ? 6 : 9);
+
+    // A handful of big open caverns first, so they get the uncontested space and the
+    // rectangular rooms pack around them.
+    for (let k = 0, tries = 0; k < (deep ? 3 : 5) && tries < 40; tries++) {
+      const box = cavernBox(rng, W, H);
+      if (rooms.some((r) => overlaps(box, r))) continue;
+      carveCavern(grid, rng, box);
+      rooms.push(box);
+      k++;
+    }
+
+    const TARGET = deep ? 76 : 52;
+    for (let attempt = 0; attempt < (deep ? 1400 : 1040) && rooms.length < TARGET; attempt++) {
+      const w = U.randInt(rng, deep ? 4 : 5, deep ? 7 : 13);
+      const h = U.randInt(rng, deep ? 4 : 5, deep ? 6 : 11);
       const x = U.randInt(rng, 2, W - w - 3);
       const y = U.randInt(rng, 2, H - h - 3);
       const room = { x, y, w, h, cx: x + Math.floor(w / 2), cy: y + Math.floor(h / 2) };
@@ -148,7 +210,7 @@
 
     // Connect each room to the previous one, then add loop corridors.
     for (let i = 1; i < rooms.length; i++) carveCorridor(grid, rooms[i], rooms[i - 1], rng);
-    for (let k = 0; k < (deep ? 6 : 3) && rooms.length > 3; k++) {
+    for (let k = 0; k < (deep ? 24 : 12) && rooms.length > 3; k++) {
       const i = U.randInt(rng, 0, rooms.length - 1);
       const j = U.randInt(rng, 0, rooms.length - 1);
       if (i !== j) carveCorridor(grid, rooms[i], rooms[j], rng);
@@ -160,6 +222,7 @@
     let stairs = null;
     let best = -1;
     for (let i = 1; i < rooms.length; i++) {
+      if (rooms[i].cavern) continue; // stairs and the arena need a true rectangle
       const d = dist[rooms[i].cy][rooms[i].cx];
       if (d !== Infinity && d > best) {
         best = d;
