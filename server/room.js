@@ -267,6 +267,9 @@ class Room {
         maxHP: Math.round(Entities.effectiveStats(pl).maxHP),
         level: pl.level,
         dead: !!pl.dead,
+        down: !!pl.down,
+        downT: round3(pl.downT || 0),
+        reviveT: round3(pl.reviveT || 0),
         swing: pl.swing
           ? { t: round3(pl.swing.t), dur: round3(pl.swing.dur), facing: round3(pl.swing.facing), radius: pl.swing.radius, arc: round3(pl.swing.arc), ranged: !!pl.swing.ranged }
           : null,

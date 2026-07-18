@@ -212,3 +212,61 @@ test('snapshot hides a teammate-owned drop but shows shared drops to all', () =>
   const seenByA = room.snapshotFor(a.id).groundItems.map((g) => g.id).sort();
   assert.deepEqual(seenByA, [10, 12], 'A sees its own + shared, not B\'s');
 });
+
+// ---- Task 5: downed / revive / respawn ----
+
+test('co-op: a hero at 0 HP goes DOWN (revivable), the run continues', () => {
+  const state = Game.newRun(80);
+  const p0 = state.player;
+  const p1 = addAlly(state, 'p1', p0.x + 300, p0.y);
+  p1.hp = 0;
+  Game.update(state, {}, 0.05);
+  assert.equal(p1.down, true, 'p1 is down');
+  assert.equal(p1.dead, false, 'down is not dead');
+  assert.equal(state.dead, false, 'the run continues');
+});
+
+test('a downed hero is revived by a nearby ally holding proximity', () => {
+  const state = Game.newRun(81);
+  const p0 = state.player;
+  const p1 = addAlly(state, 'p1', p0.x, p0.y); // co-located reviver
+  p1.hp = 0;
+  Game.update(state, {}, 0.05);
+  assert.ok(p1.down);
+  for (let t = 0; t < 50; t++) Game.update(state, {}, 0.05); // > reviveTime (1.6s)
+  assert.equal(p1.down, false, 'revived');
+  assert.ok(p1.hp > 0, 'restored with HP');
+});
+
+test('a downed hero left alone respawns at the floor entry', () => {
+  const state = Game.newRun(82);
+  const p0 = state.player;
+  const p1 = addAlly(state, 'p1', p0.x + 3000, p0.y); // no reviver near
+  p1.hp = 0;
+  Game.update(state, {}, 0.05);
+  assert.ok(p1.down);
+  for (let t = 0; t < 230; t++) Game.update(state, {}, 0.05); // > respawnTime (10s)
+  assert.equal(p1.down, false, 'respawned');
+  const ex = (state.dungeon.entry.x + 0.5) * 32;
+  const ey = (state.dungeon.entry.y + 0.5) * 32;
+  assert.ok(Math.hypot(p1.x - ex, p1.y - ey) < 48, 'back at the entry');
+});
+
+test('downing the whole party simultaneously ends the run', () => {
+  const state = Game.newRun(83);
+  const p0 = state.player;
+  const p1 = addAlly(state, 'p1', p0.x + 300, p0.y);
+  p0.hp = 0;
+  p1.hp = 0;
+  Game.update(state, {}, 0.05);
+  assert.equal(state.dead, true, 'a full wipe ends the run');
+});
+
+test('solo: 0 HP is immediate permadeath (unchanged)', () => {
+  const state = Game.newRun(84);
+  state.player.hp = 0;
+  Game.update(state, {}, 0.05);
+  assert.equal(state.player.dead, true, 'solo player dies');
+  assert.equal(state.dead, true, 'run ends');
+  assert.ok(!state.player.down, 'no down state in solo');
+});
