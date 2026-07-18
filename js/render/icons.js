@@ -223,16 +223,77 @@
       ctx.fill();
       ctx.fillStyle = 'rgba(0,0,0,0.25)';
       ctx.fillRect(-8, -8, 16, 3);
+      // Motif detailing over the cuirass silhouette.
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      if (item.motif === 'mail') {
+        for (let ry = -4; ry <= 8; ry += 4)
+          for (let rx = -5; rx <= 5; rx += 3.5) {
+            ctx.beginPath();
+            ctx.arc(rx, ry, 1, 0, Math.PI * 2);
+            ctx.fill();
+          }
+      } else if (item.motif === 'scale') {
+        ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+        ctx.lineWidth = 0.8;
+        for (let ry = -3; ry <= 7; ry += 3.5)
+          for (let rx = -5; rx <= 5; rx += 4) {
+            ctx.beginPath();
+            ctx.arc(rx, ry, 2, Math.PI, 0);
+            ctx.stroke();
+          }
+      } else if (item.motif === 'plate') {
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.fillRect(-0.8, -6, 1.6, 14); // center ridge
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        for (const ry of [-4, 8]) {
+          ctx.beginPath();
+          ctx.arc(-5, ry, 0.9, 0, Math.PI * 2);
+          ctx.arc(5, ry, 0.9, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else {
+        ctx.fillStyle = 'rgba(0,0,0,0.18)'; // robe fold
+        ctx.fillRect(-0.6, -6, 1.2, 14);
+      }
     } else if (item.slot === 'helmet') {
-      ctx.fillStyle = item.tone || '#98a2b0';
+      const tone = item.tone || '#98a2b0';
+      ctx.fillStyle = tone;
       ctx.beginPath();
       ctx.arc(0, 0, 8, Math.PI, 0);
       ctx.fill();
       ctx.fillRect(-9, -1, 18, 3);
-      ctx.fillRect(-1.5, 2, 3, 6);
-      ctx.fillStyle = 'rgba(0,0,0,0.3)';
-      ctx.fillRect(-6, -1, 4, 2);
-      ctx.fillRect(2, -1, 4, 2);
+      const motif = item.motif || 'cap';
+      if (motif === 'crown') {
+        ctx.beginPath(); // two horns
+        ctx.moveTo(-7, -3);
+        ctx.lineTo(-10, -10);
+        ctx.lineTo(-4, -4);
+        ctx.moveTo(7, -3);
+        ctx.lineTo(10, -10);
+        ctx.lineTo(4, -4);
+        ctx.fill();
+      } else if (motif === 'visor') {
+        ctx.fillStyle = 'rgba(0,0,0,0.5)'; // eye slit
+        ctx.fillRect(-6, -3, 12, 1.6);
+        ctx.fillStyle = tone; // small wing
+        ctx.beginPath();
+        ctx.moveTo(-8, -1);
+        ctx.lineTo(-12, -4);
+        ctx.lineTo(-8, -3);
+        ctx.moveTo(8, -1);
+        ctx.lineTo(12, -4);
+        ctx.lineTo(8, -3);
+        ctx.fill();
+      } else if (motif === 'helm') {
+        ctx.fillRect(-1.5, 2, 3, 6); // noseguard
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.fillRect(-6, -1, 4, 2);
+        ctx.fillRect(2, -1, 4, 2);
+      } else {
+        // cap — soft dome with a brim shadow.
+        ctx.fillStyle = 'rgba(0,0,0,0.22)';
+        ctx.fillRect(-9, -1, 18, 1.4);
+      }
     } else if (item.slot === 'gloves') {
       ctx.fillStyle = item.tone || '#8f97a5';
       for (const side of [-1, 1]) {
@@ -258,16 +319,31 @@
         ctx.fillRect(bx, 1, side > 0 ? 8 : 5, 4.5);
       }
     } else {
-      // ring
+      // ring — gold band with a gem in the base's setting colour.
       ctx.strokeStyle = '#d9c06a';
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.arc(0, 1, 6, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.fillStyle = '#9adfff';
+      ctx.fillStyle = item.gem || '#9adfff';
       ctx.beginPath();
-      ctx.arc(0, -6, 2.5, 0, Math.PI * 2);
+      ctx.arc(0, -6, 2.8, 0, Math.PI * 2);
       ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.beginPath();
+      ctx.arc(-0.9, -6.9, 1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Rarity ornament: a small corner pip in the rarity colour so magic+ gear reads
+    // at a glance in the bag grid and on the ground. Common gear stays unadorned.
+    if (item.rarity && item.rarity !== 'common' && item.color) {
+      ctx.fillStyle = item.color;
+      ctx.beginPath();
+      ctx.arc(8, -8, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+      ctx.lineWidth = 0.6;
+      ctx.stroke();
     }
     ctx.restore();
   }

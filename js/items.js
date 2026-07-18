@@ -72,44 +72,66 @@
     { base: 'Javelin', family: 'thrown', kind: 'thrown', dmg: [9, 13], speed: [1.8, 2.1], projSpeed: [420, 480], minFloor: 4 },
   ];
   // tone = weight-class color painted onto the sprite and icons (leather/mail/plate/bone).
+  // motif = icon silhouette variant (robe/mail/scale/plate for bodies; cap/helm/visor/
+  // crown for heads). Absent motif falls back to a generic per-slot draw.
   const ARMOR_BASES = [
-    { base: 'Quilted Armor', def: [1, 2], hp: [0, 6], tone: '#8a6f4d' },
-    { base: 'Leather Armor', def: [1, 2], hp: [0, 8], tone: '#8a6f4d' },
-    { base: 'Chain Mail', def: [2, 4], hp: [4, 12], tone: '#8a94a2', minFloor: 2 },
-    { base: 'Scale Mail', def: [3, 5], hp: [6, 14], tone: '#8a94a2', minFloor: 4 },
-    { base: 'Gothic Plate', def: [4, 6], hp: [8, 18], mv: [-0.04, -0.02], tone: '#b8c2cf', minFloor: 5 },
-    { base: 'Full Plate', def: [6, 9], hp: [12, 22], mv: [-0.05, -0.03], tone: '#b8c2cf', minFloor: 7 },
+    { base: 'Quilted Armor', motif: 'robe', def: [1, 2], hp: [0, 6], tone: '#8a6f4d' },
+    { base: 'Leather Armor', motif: 'robe', def: [1, 2], hp: [0, 8], tone: '#8a6f4d' },
+    { base: 'Ring Mail', motif: 'mail', def: [2, 3], hp: [3, 10], tone: '#8a94a2', minFloor: 2 },
+    { base: 'Chain Mail', motif: 'mail', def: [2, 4], hp: [4, 12], tone: '#8a94a2', minFloor: 2 },
+    { base: 'Brigandine', motif: 'scale', def: [3, 4], hp: [5, 12], tone: '#8a6f4d', minFloor: 3 },
+    { base: 'Scale Mail', motif: 'scale', def: [3, 5], hp: [6, 14], tone: '#8a94a2', minFloor: 4 },
+    { base: 'Cuirass', motif: 'plate', def: [4, 6], hp: [7, 16], tone: '#b8c2cf', minFloor: 5 },
+    { base: 'Gothic Plate', motif: 'plate', def: [4, 6], hp: [8, 18], mv: [-0.04, -0.02], tone: '#b8c2cf', minFloor: 5 },
+    { base: 'Full Plate', motif: 'plate', def: [6, 9], hp: [12, 22], mv: [-0.05, -0.03], tone: '#b8c2cf', minFloor: 7 },
+    { base: 'Dragonscale', motif: 'scale', def: [7, 10], hp: [14, 26], mana: [4, 10], tone: '#5f8f6a', minFloor: 8 },
   ];
   const HELMET_BASES = [
-    { base: 'Leather Cap', def: [1, 2], hp: [0, 5], tone: '#8a6f4d' },
-    { base: 'Skull Cap', def: [1, 3], hp: [2, 6], tone: '#8a94a2' },
-    { base: 'Full Helm', def: [2, 3], hp: [3, 8], tone: '#8a94a2', minFloor: 3 },
-    { base: 'Bone Visage', def: [2, 4], hp: [3, 8], mana: [4, 10], tone: '#d8d2c2', minFloor: 4 },
-    { base: 'Great Helm', def: [3, 5], hp: [6, 12], tone: '#b8c2cf', minFloor: 5 },
-    { base: 'Horned Crown', def: [3, 5], hp: [8, 14], mana: [4, 8], tone: '#c9a15a', minFloor: 6 },
+    { base: 'Leather Cap', motif: 'cap', def: [1, 2], hp: [0, 5], tone: '#8a6f4d' },
+    { base: 'Skull Cap', motif: 'cap', def: [1, 3], hp: [2, 6], tone: '#8a94a2' },
+    { base: 'Iron Helm', motif: 'helm', def: [2, 3], hp: [3, 7], tone: '#8a94a2', minFloor: 2 },
+    { base: 'Full Helm', motif: 'helm', def: [2, 3], hp: [3, 8], tone: '#8a94a2', minFloor: 3 },
+    { base: 'Bone Visage', motif: 'visor', def: [2, 4], hp: [3, 8], mana: [4, 10], tone: '#d8d2c2', minFloor: 4 },
+    { base: 'Great Helm', motif: 'helm', def: [3, 5], hp: [6, 12], tone: '#b8c2cf', minFloor: 5 },
+    { base: 'Winged Helm', motif: 'visor', def: [3, 5], hp: [6, 12], mv: [0.01, 0.03], tone: '#b8c2cf', minFloor: 6 },
+    { base: 'Horned Crown', motif: 'crown', def: [3, 5], hp: [8, 14], mana: [4, 8], tone: '#c9a15a', minFloor: 6 },
   ];
   const GLOVE_BASES = [
     { base: 'Hide Mitts', def: [1, 2], spd: [0.03, 0.07], tone: '#8a6f4d' },
     { base: 'Leather Gloves', def: [1, 2], spd: [0.04, 0.08], tone: '#8a6f4d' },
     { base: 'Chain Gauntlets', def: [2, 3], spd: [0.03, 0.06], tone: '#8a94a2', minFloor: 2 },
+    { base: 'Silk Gloves', def: [1, 2], spd: [0.06, 0.10], tone: '#7a5f8a', minFloor: 3 },
     { base: 'Duelist Gloves', def: [1, 2], spd: [0.07, 0.11], tone: '#5a5568', minFloor: 4 },
     { base: 'War Gauntlets', def: [3, 5], spd: [0.02, 0.05], tone: '#b8c2cf', minFloor: 6 },
+    { base: 'Ogre Gauntlets', def: [4, 6], spd: [0.02, 0.04], tone: '#5f8f6a', minFloor: 7 },
   ];
   const PANTS_BASES = [
     { base: 'Quilted Trousers', def: [1, 2], hp: [2, 6], tone: '#8a6f4d' },
     { base: 'Leather Greaves', def: [1, 3], tone: '#8a6f4d' },
     { base: 'Mail Leggings', def: [2, 4], tone: '#8a94a2', minFloor: 2 },
+    { base: 'Scale Leggings', def: [3, 5], hp: [2, 6], tone: '#8a94a2', minFloor: 4 },
     { base: 'Shadow Breeches', def: [1, 3], mv: [0.02, 0.04], tone: '#5a5568', minFloor: 4 },
     { base: 'Plated Cuisses', def: [3, 6], mv: [-0.03, -0.02], tone: '#b8c2cf', minFloor: 5 },
+    { base: 'Dragonhide Chausses', def: [4, 7], hp: [4, 10], tone: '#5f8f6a', minFloor: 8 },
   ];
   const BOOTS_BASES = [
     { base: 'Rough Boots', def: [1, 1], mv: [0.03, 0.06], tone: '#8a6f4d' },
     { base: 'Worn Boots', def: [1, 2], mv: [0.03, 0.07], tone: '#8a6f4d' },
+    { base: "Traveler's Boots", def: [1, 2], mv: [0.05, 0.09], tone: '#8a6f4d', minFloor: 2 },
     { base: 'Chain Boots', def: [2, 3], mv: [0.02, 0.05], tone: '#8a94a2', minFloor: 2 },
     { base: 'Swift Striders', def: [1, 2], mv: [0.07, 0.11], tone: '#5a5568', minFloor: 4 },
     { base: 'Greaved Sabatons', def: [3, 4], mv: [0.02, 0.04], tone: '#b8c2cf', minFloor: 6 },
+    { base: 'Winged Boots', def: [2, 3], mv: [0.09, 0.13], tone: '#c9a15a', minFloor: 7 },
   ];
-  const RING_BASES = [{ base: 'Bone Ring' }, { base: 'Iron Loop' }, { base: 'Occult Band' }];
+  // gem = the icon's setting colour.
+  const RING_BASES = [
+    { base: 'Bone Ring', gem: '#e8e2d6' },
+    { base: 'Iron Loop', gem: '#9adfff' },
+    { base: 'Occult Band', gem: '#c86bff' },
+    { base: 'Gold Signet', gem: '#ffd84d' },
+    { base: 'Jade Circle', gem: '#5fd08a' },
+    { base: 'Ruby Band', gem: '#ff5c5c' },
+  ];
 
   Items.EQUIP_SLOTS = ['weapon', 'helmet', 'armor', 'gloves', 'pants', 'boots', 'ring'];
 
@@ -150,6 +172,22 @@
     moveMult: {
       roll: (rng) => Math.round((0.04 + rng() * 0.1) * 100) / 100,
       label: (v) => `+${Math.round(v * 100)}% Move Speed`,
+    },
+    critChance: {
+      roll: (rng) => Math.round((0.03 + rng() * 0.05) * 100) / 100,
+      label: (v) => `+${Math.round(v * 100)}% Critical Strike`,
+    },
+    thorns: {
+      roll: (rng, f) => Math.max(1, Math.round(1 + rng() * 2 + f * 0.5)),
+      label: (v) => `Reflect ${v} Damage (Thorns)`,
+    },
+    lifeRegen: {
+      roll: (rng, f) => Math.round((0.5 + rng() + f * 0.2) * 10) / 10,
+      label: (v) => `+${v.toFixed(1)} Life Regeneration`,
+    },
+    manaPerKill: {
+      roll: (rng, f) => Math.max(1, Math.round(1 + rng() * 2 + f * 0.3)),
+      label: (v) => `+${v} Mana per Kill`,
     },
   };
 
@@ -260,6 +298,8 @@
     };
     if (kind) item.kind = kind;
     if (baseDef.family) item.family = baseDef.family;
+    if (baseDef.motif) item.motif = baseDef.motif;
+    if (baseDef.gem) item.gem = baseDef.gem;
     if (baseDef.tone) item.tone = baseDef.tone;
     return item;
   };
@@ -306,6 +346,10 @@
       maxMana: 0,
       defense: 0,
       lifePerKill: 0,
+      manaPerKill: 0,
+      critChance: 0,
+      thorns: 0,
+      lifeRegen: 0,
     };
     let baseSpeed = w ? w.stats.speed : UNARMED.speed;
     let speedAdd = 0;
@@ -328,6 +372,10 @@
         else if (a.key === 'maxMana') s.maxMana += a.val;
         else if (a.key === 'defense') s.defense += a.val;
         else if (a.key === 'lifePerKill') s.lifePerKill += a.val;
+        else if (a.key === 'manaPerKill') s.manaPerKill += a.val;
+        else if (a.key === 'critChance') s.critChance += a.val;
+        else if (a.key === 'thorns') s.thorns += a.val;
+        else if (a.key === 'lifeRegen') s.lifeRegen += a.val;
         else if (a.key === 'speedMult') speedAdd += a.val;
         else if (a.key === 'xpMult') xpAdd += a.val;
         else if (a.key === 'moveMult') moveAdd += a.val;

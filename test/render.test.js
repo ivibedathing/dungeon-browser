@@ -87,6 +87,28 @@ test('every weapon family draws as an icon and a held sprite without crashing', 
   }
 });
 
+test('every armor motif, ring gem, and rarity pip draws without crashing', () => {
+  const ctx = makeCtx();
+  const armorMotifs = ['robe', 'mail', 'scale', 'plate', undefined];
+  const helmMotifs = ['cap', 'helm', 'visor', 'crown', undefined];
+  const rarities = ['common', 'magic', 'rare', 'unique'];
+  for (const rarity of rarities) {
+    const color = Items.RARITIES[rarity].color;
+    for (const motif of armorMotifs) {
+      Render.drawItemIcon(ctx, { slot: 'armor', motif, tone: '#8a94a2', rarity, color }, 50, 50, 1);
+    }
+    for (const motif of helmMotifs) {
+      Render.drawItemIcon(ctx, { slot: 'helmet', motif, tone: '#b8c2cf', rarity, color }, 50, 50, 1);
+    }
+    for (const slot of ['gloves', 'pants', 'boots']) {
+      Render.drawItemIcon(ctx, { slot, tone: '#8a6f4d', rarity, color }, 50, 50, 1);
+    }
+    for (const gem of ['#e8e2d6', '#c86bff', '#ffd84d', '#5fd08a', '#ff5c5c']) {
+      Render.drawItemIcon(ctx, { slot: 'ring', gem, rarity, color }, 50, 50, 1);
+    }
+  }
+});
+
 test('full frame pipeline draws every entity/UI state without crashing', () => {
   const ctx = makeCtx();
   const view = { w: 1280, h: 800 };

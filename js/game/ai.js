@@ -82,6 +82,9 @@
           G.floatText(state, p.x, p.y - 24, `-${dmg}`, '#ff5c4d', 15);
           G.burst(state, p.x, p.y, '#c03a2b', 6, 100);
           G.sfx(state, 'hurt');
+          // Thorns: reflect a flat bite back at the attacker (credited to the player,
+          // so a thorns-kill still drops loot and grants XP). No knockback.
+          if (stats.thorns > 0) G.hitMonster(state, m, stats.thorns, stats, 0, 0, p);
         }
       }
       return;

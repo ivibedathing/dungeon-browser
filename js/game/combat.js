@@ -147,10 +147,16 @@
     G.burst(state, m.x, m.y, '#a3232e', 7, 110);
     if (m.hp <= 0) killMonster(state, m, stats, killer || state.player);
   }
+  G.hitMonster = hitMonster; // exported for thorns reflection (and Phase 4 behaviors)
 
   function rollDamage(state, stats) {
-    return Math.max(1, Math.round(stats.damage * (0.85 + state.srand() * 0.3)));
+    let dmg = Math.max(1, Math.round(stats.damage * (0.85 + state.srand() * 0.3)));
+    // Critical strike: a 1.5× hit. The srand() draw is guarded on critChance so gear
+    // without crit never perturbs the RNG stream (byte-identical to the old roll).
+    if (stats.critChance && state.srand() < stats.critChance) dmg = Math.round(dmg * 1.5);
+    return dmg;
   }
+  G.rollDamage = rollDamage; // exported for tests (crit determinism)
 
   function playerAttack(state, p = state.player) {
     const stats = Entities.effectiveStats(p);
@@ -313,9 +319,13 @@
       state.shake = 7;
       G.message(state, `${m.name} has been slain!`, '#ff9a3d');
     }
-    // "You kill, you leech": lifePerKill heals the credited killer only.
+    // "You kill, you leech": lifePerKill heals and manaPerKill restores mana to the
+    // credited killer only.
     if (stats.lifePerKill > 0) {
       killer.hp = Math.min(Entities.effectiveStats(killer).maxHP, killer.hp + stats.lifePerKill);
+    }
+    if (stats.manaPerKill > 0) {
+      killer.mana = Math.min(Entities.effectiveStats(killer).maxMana, (killer.mana || 0) + stats.manaPerKill);
     }
     // XP goes to every living player within share range of the kill (Task 3). Solo:
     // the one player is always in range ⇒ identical to the old single-player grant.

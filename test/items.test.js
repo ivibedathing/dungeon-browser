@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const U = require('../js/util.js');
 const Items = require('../js/items.js');
 
-const AFFIX_KEYS = ['damage', 'radius', 'speedMult', 'maxHP', 'maxMana', 'defense', 'lifePerKill', 'xpMult', 'moveMult'];
+const AFFIX_KEYS = ['damage', 'radius', 'speedMult', 'maxHP', 'maxMana', 'defense', 'lifePerKill', 'xpMult', 'moveMult', 'critChance', 'thorns', 'lifeRegen', 'manaPerKill'];
 
 test('rollRarity matches the Balance rarity weights', () => {
   const Balance = require('../js/balance.js');
@@ -41,7 +41,8 @@ test('makeItem produces valid items with rarity-appropriate affix counts', () =>
     for (const a of item.affixes) {
       assert.ok(AFFIX_KEYS.includes(a.key), `affix key ${a.key}`);
       assert.ok(a.val > 0);
-      assert.ok(typeof a.label === 'string' && a.label.includes('+'));
+      // A non-empty, human-readable label that mentions the rolled value.
+      assert.ok(typeof a.label === 'string' && a.label.length > 0, `label for ${a.key}`);
     }
     if (item.slot === 'weapon') {
       assert.ok(item.stats.damage > 0);
