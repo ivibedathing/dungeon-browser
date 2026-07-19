@@ -12,6 +12,8 @@ globalThis.Skills = require('../js/skills.js');
 globalThis.Entities = require('../js/entities.js');
 globalThis.Quests = require('../js/quests.js');
 globalThis.Dungeon = require('../js/dungeon.js');
+globalThis.World = require('../js/world.js');
+const World = globalThis.World;
 const Game = require('../js/game.js');
 const Balance = require('../js/balance.js');
 const E = Entities;
@@ -49,30 +51,52 @@ test('makeBoss scales with party too, and n=1 matches the default', () => {
 
 // ---- Task 1: pristine-floor party sampling in the Room ----
 
-test('Room scales the entry floor to the party while it is pristine, then locks it', () => {
+
+// A room begins on the continent at Ashfall, which is a hard safe ring — so a
+// party-scaling test has to walk out to somewhere that actually has monsters.
+// Moves the whole party to one chunk in a dangerous ring and lets activation
+// populate it.
+function partyToWild(room, cx = 21, cy = 21) {
+  const s = room.state;
+  const c = World.chunkCenter(cx, cy);
+  const spot = Game._.findOpenTile(s.world.world, c.x, c.y);
+  for (const pl of s.players) {
+    pl.x = (spot.x + 0.5) * 32;
+    pl.y = (spot.y + 0.5) * 32;
+  }
+  for (let i = 0; i < 4; i++) Game._.worldUpdate(s, 1 / 30);
+  return s;
+}
+
+test('Room repopulates chunks for the party while pristine, then locks them', () => {
   const { Room } = require('../server/room.js');
   const room = new Room({ code: 'AAAA', seed: 123 });
   room.join({});
-  const oneN = room.state.monsters.length ? room.state.monsters[0].maxHP : null;
-  // Seat three more before any blow lands → the pristine floor rescales to 4.
+  partyToWild(room);
+  assert.ok(room.state.monsters.some((m) => !m.boss), 'the wild should hold monsters');
+
+  // Seat three more before any blow lands. Out here the pristine rescale drops
+  // the live chunks rather than regenerating a floor; they come back from the
+  // same deterministic roll, now built for a party of four.
   room.join({});
   room.join({});
   room.join({});
   assert.equal(room.state.partyN, 4);
+  partyToWild(room);
   const scaled = room.state.monsters.find((m) => !m.boss);
-  assert.ok(scaled, 'floor has monsters');
-  // A floor-1 monster of the same type should now be ~party-scaled vs a solo one.
-  const soloRef = E.makeMonster(scaled.type, room.state.floor, scaled.champion, 1);
-  const partyRef = E.makeMonster(scaled.type, room.state.floor, scaled.champion, 4);
-  assert.equal(scaled.maxHP, partyRef.maxHP);
-  assert.notEqual(soloRef.maxHP, partyRef.maxHP);
-  // Land a blow: the floor locks. A later join must not rescale survivors.
+  assert.ok(scaled, 'the chunk did not repopulate');
+  const ef = World.effectiveFloor(World.ringOf(scaled.chunk % World.CHUNKS, Math.floor(scaled.chunk / World.CHUNKS)));
+  const soloRef = E.makeMonster(scaled.type, ef, scaled.champion, 1);
+  const partyRef = E.makeMonster(scaled.type, ef, scaled.champion, 4);
+  assert.notEqual(soloRef.maxHP, partyRef.maxHP, 'party scaling must actually differ');
+  assert.equal(scaled.maxHP, partyRef.maxHP, 'monsters are not party-scaled');
+
+  // Land a blow: the live set locks. A later join must not rescale survivors.
   scaled.hp -= 1;
   const before = room.state.monsters.map((m) => m.maxHP);
-  // (room is full at 4; simulate a leave+join churn on a dirtied floor)
   room.leave('p3');
   room.join({});
-  assert.deepEqual(room.state.monsters.map((m) => m.maxHP), before, 'dirtied floor stays locked');
+  assert.deepEqual(room.state.monsters.map((m) => m.maxHP), before, 'a dirtied world stays locked');
 });
 
 // ---- Task 2: attacker-aware combat ----
@@ -412,12 +436,16 @@ test('Task 8: a 4-seat room is party-scaled, pays in-range XP, and instances dro
   const { Room } = require('../server/room.js');
   const room = new Room({ code: 'CCCC', seed: 4242 });
   for (let i = 0; i < 4; i++) room.join({});
-  const s = room.state;
+  const s = partyToWild(room);
   assert.equal(s.partyN, 4, 'four seats ⇒ party of four');
 
-  // The floor is scaled to the party.
+  // What the party meets out in the world is scaled to the party.
   const mon = s.monsters.find((m) => !m.boss);
-  assert.equal(mon.maxHP, Entities.makeMonster(mon.type, s.floor, mon.champion, 4).maxHP, 'monsters are 4-party scaled');
+  assert.ok(mon, 'the wild should hold monsters');
+  // Out here a monster's stats come from its ring's effective floor, which is
+  // what feeds E.makeMonster — the same scaling curve the dungeon uses.
+  const monFloor = World.effectiveFloor(World.ringOf(mon.chunk % World.CHUNKS, Math.floor(mon.chunk / World.CHUNKS)));
+  assert.equal(mon.maxHP, Entities.makeMonster(mon.type, monFloor, mon.champion, 4).maxHP, 'monsters are 4-party scaled');
 
   // Cluster the party on a monster; a kill pays full XP to every in-range member.
   const target = s.monsters[0];

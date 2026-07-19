@@ -31,6 +31,7 @@
   <script src="js/entities.js"></script>
   <script src="js/quests.js"></script>
   <script src="js/dungeon.js"></script>
+  <script src="js/world.js"></script>
   <script src="js/game/core.js"></script>
   <script src="js/game/state.js"></script>
   <script src="js/game/status.js"></script>
@@ -39,6 +40,7 @@
   <script src="js/game/behaviors.js"></script>
   <script src="js/game/inventory.js"></script>
   <script src="js/game/town.js"></script>
+  <script src="js/game/world.js"></script>
   <script src="js/game/update.js"></script>
   <script src="js/render/core.js"></script>
   <script src="js/render/tiles.js"></script>
@@ -79,14 +81,68 @@
         return s;
       }
 
+      // A run now begins out on the continent, so any scene that wants a dungeon
+      // floor has to ask for one. Builds floor `n` in place and returns the state.
+      function toFloor(n) {
+        const s = window.__state();
+        s.inWorld = false;
+        s.world = null;
+        s.stash = null;
+        s.floor = n || 1;
+        s.dungeonSeed = null;
+        window.__mods.Game._.makeFloorState(s);
+        pump(2);
+        return window.__state();
+      }
+
+      // Ashfall Camp is a plaza stamped into the middle of the world now — you
+      // walk to it rather than portalling, so "enter town" is "stand in camp".
       function enterTown(s) {
         s.monsters.length = 0;
-        pump(1, {}, ['portal']);
-        const portal = s.portals[0];
-        s.player.x = portal.x;
-        s.player.y = portal.y;
-        pump(45);
-        return s;
+        const camp = window.__mods.World.town(s.world.world);
+        s.player.x = (camp.entry.x + 0.5) * TS;
+        s.player.y = (camp.entry.y + 0.5) * TS;
+        s.cam.x = s.player.x;
+        s.cam.y = s.player.y;
+        pump(6);
+        return window.__state();
+      }
+
+      // Walk to the first tile matching `pick` within `radius` tiles, generating
+      // terrain as needed. Used by the landscape scenes to find real coastline,
+      // real cliff, and a real road rather than staging fake ones.
+      function findTile(s, pick, radius) {
+        const W = window.__mods.World;
+        const world = s.world.world;
+        const c0 = W.chunkOf(Math.floor(s.player.x / TS), Math.floor(s.player.y / TS));
+        const R = radius || 6;
+        for (let r = 0; r <= R; r++) {
+          for (let cy = c0.cy - r; cy <= c0.cy + r; cy++) {
+            for (let cx = c0.cx - r; cx <= c0.cx + r; cx++) {
+              if (!W.inBounds(cx, cy)) continue;
+              if (Math.max(Math.abs(cx - c0.cx), Math.abs(cy - c0.cy)) !== r) continue;
+              W.ensureChunk(world, cx, cy);
+              for (let y = cy * W.CHUNK; y < cy * W.CHUNK + W.CHUNK; y++) {
+                for (let x = cx * W.CHUNK; x < cx * W.CHUNK + W.CHUNK; x++) {
+                  if (pick(world.grid, x, y)) return { x, y };
+                }
+              }
+            }
+          }
+        }
+        return null;
+      }
+
+      // Stand the hero on open ground beside a target tile and settle the camera.
+      function standAt(s, tile) {
+        if (!tile) return window.__state();
+        const spot = window.__mods.Game._.findOpenTile(s.world.world, tile.x, tile.y + 2);
+        s.player.x = (spot.x + 0.5) * TS;
+        s.player.y = (spot.y + 0.5) * TS;
+        s.cam.x = s.player.x;
+        s.cam.y = s.player.y;
+        pump(8);
+        return window.__state();
       }
 
       // Aim the cursor using the game's own view size (headless viewports lie).
@@ -107,6 +163,7 @@
         const rng = M.U.mulberry32(7);
 
         if (mode === 'combat') {
+          toFloor(1);
           const sp = s.dungeon.spawns[0];
           s.player.x = (sp.x + 0.5) * TS + 40;
           s.player.y = (sp.y + 0.5) * TS;
@@ -189,6 +246,7 @@
           s.quests[1].count = s.quests[1].need; // and one ready to claim
           pump(1, {}, ['interact']);
         } else if (mode === 'fireball') {
+          toFloor(1);
           s.monsters.length = 0;
           for (const slot of ['helmet', 'armor', 'gloves', 'pants', 'boots']) {
             s.player.equip[slot] = I.makeItem(5, rng, { slot, rarity: 'rare' });
@@ -223,6 +281,7 @@
             requestAnimationFrame(probe);
           });
         } else if (mode === 'nova') {
+          toFloor(1);
           s.monsters.length = 0;
           const Sk = M.Skills;
           s.player.skillPoints = 5;
@@ -238,6 +297,7 @@
           pump(1, {}, ['skill1']);
           pump(10); // ring mid-flight at ~45px out
         } else if (mode === 'bossfight') {
+          toFloor(1);
           // Ride the stairs to floor 2, then step into the arena mid-fight.
           s.player.x = (s.dungeon.stairs.x + 0.5) * TS;
           s.player.y = (s.dungeon.stairs.y + 0.5) * TS;
@@ -269,7 +329,14 @@
           window.__setState(M.Game.fromSave(data));
         } else if (mode === 'waypoints') {
           s.milestones = [5, 10];
-          enterTown(s);
+          toFloor(3);
+          const sf = window.__state();
+          sf.monsters.length = 0;
+          pump(1, {}, ['portal']);
+          const gate = sf.portals[0];
+          sf.player.x = gate.x;
+          sf.player.y = gate.y;
+          pump(45);
           const s2 = window.__state();
           const e = s2.dungeon.entry;
           s2.player.x = (e.x + 0.5) * TS;
@@ -297,6 +364,48 @@
             hoverWeapon();
             requestAnimationFrame(probe);
           });
+        } else if (mode === 'world') {
+          // Open country: biome ground, roadside braziers, free-roaming monsters.
+          const c = window.__mods.World.chunkCenter(20, 18);
+          standAt(s, { x: c.x, y: c.y - 2 });
+        } else if (mode === 'coast') {
+          // A shoreline: water is impassable, so this is a real edge of the world.
+          const D = window.__mods.Dungeon;
+          standAt(s, findTile(s, (g, x, y) => g[y][x] === D.TILE.WATER && D.isWalkable(g[y][x - 1]) && D.isWalkable(g[y + 1][x - 1]), 8));
+        } else if (mode === 'cliff') {
+          const D = window.__mods.Dungeon;
+          standAt(s, findTile(s, (g, x, y) => g[y][x] === D.TILE.CLIFF && D.isWalkable(g[y + 2][x]) && g[y][x + 1] === D.TILE.CLIFF, 8));
+        } else if (mode === 'road') {
+          // A road bridging or cutting hostile ground — the connectivity guarantee.
+          const D = window.__mods.Dungeon;
+          standAt(s, findTile(s, (g, x, y) => g[y][x] === D.TILE.ROAD && (g[y + 2] && g[y + 2][x] === D.TILE.WATER || g[y + 2] && g[y + 2][x] === D.TILE.CLIFF), 8));
+        } else if (mode === 'camp') {
+          // Ashfall from the road in, the way you actually arrive at it.
+          const camp = window.__mods.World.town(s.world.world);
+          s.player.x = (camp.entry.x + 0.5) * TS;
+          s.player.y = (camp.entry.y + 6.5) * TS;
+          s.cam.x = s.player.x;
+          s.cam.y = s.player.y;
+          pump(8);
+        } else if (mode === 'mouth') {
+          const W = window.__mods.World;
+          W.ensureAround(s.world.world, W.TOWN_CX, W.TOWN_CY, 4);
+          const poi = Object.values(s.world.world.pois).find((p) => p.kind === 'mouth');
+          standAt(s, poi ? { x: poi.x, y: poi.y } : null);
+        } else if (mode === 'waystone') {
+          const W = window.__mods.World;
+          W.ensureAround(s.world.world, W.TOWN_CX, W.TOWN_CY, 6);
+          const poi = Object.values(s.world.world.pois).find((p) => p.kind === 'waystone');
+          standAt(s, poi ? { x: poi.x, y: poi.y } : null);
+        } else if (mode === 'worldmap') {
+          // The M panel, with a stretch of continent actually explored.
+          const W = window.__mods.World;
+          for (const [cx, cy] of [[16, 16], [17, 16], [18, 17], [19, 18], [15, 15], [14, 16], [16, 19]]) {
+            W.ensureChunk(s.world.world, cx, cy);
+            s.world.visited[W.chunkKey(cx, cy)] = true;
+          }
+          pump(4);
+          window.__state().mapOpen = true;
         } else if (mode === 'save') {
           // Stage a mid-run character and persist it; a later plain load must resume it.
           s.floor = 3;

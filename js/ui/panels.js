@@ -565,4 +565,169 @@
     ctx.fillText('C or ESC: close', P.x + P.w / 2, P.y + P.h - 14);
     ctx.textAlign = 'left';
   };
+  // ---- The world map (M) ----
+  // The continent is 2048 tiles across; the panel shows it downsampled 8:1, so
+  // one map pixel is an 8x8 tile block and one chunk is an 8x8 pixel square.
+
+  I.WORLD_MAP_PX = 256; // the map image, in pixels, before the panel scale
+  I.WORLD_MAP_TILES_PER_PX = 8;
+
+  // Geometry only, so the tests can pin the rects without a canvas.
+  I.worldMapLayout = function worldMapLayout(view) {
+    const size = Math.min(I.WORLD_MAP_PX * 2, Math.max(256, Math.min(view.w - 120, view.h - 160)));
+    return {
+      panel: { x: (view.w - size - 48) / 2, y: (view.h - size - 96) / 2, w: size + 48, h: size + 96 },
+      map: { x: (view.w - size) / 2, y: (view.h - size - 96) / 2 + 56, w: size, h: size },
+      size,
+    };
+  };
+
+  // World tile coords -> a point inside the drawn map rect.
+  I.worldMapPoint = function worldMapPoint(L, tileX, tileY, worldTiles) {
+    const span = worldTiles || 2048;
+    return { x: L.map.x + (tileX / span) * L.map.w, y: L.map.y + (tileY / span) * L.map.h };
+  };
+
+  // Everything pinned on the map, in world tile coords. Phase 4 adds the mouths,
+  // waystones and world bosses; the town is always known.
+  I.worldMapPins = function worldMapPins(state) {
+    const pins = [];
+    const w = state.world;
+    if (!w) return pins;
+    const World = typeof window !== 'undefined' ? window.World : require('../world.js');
+    const town = World.chunkCenter(World.TOWN_CX, World.TOWN_CY);
+    pins.push({ kind: 'town', x: town.x, y: town.y, label: 'Ashfall Camp', color: '#ffd84d' });
+    for (const p of w.pois ? Object.values(w.pois) : []) {
+      if (!p.found) continue;
+      if (p.kind === 'mouth') pins.push({ kind: 'mouth', x: p.x, y: p.y, label: p.name, color: '#c66bff' });
+      else if (p.kind === 'waystone') pins.push({ kind: 'waystone', x: p.x, y: p.y, label: p.name, color: p.unlocked ? '#7fb8ff' : 'rgba(127,184,255,0.4)' });
+    }
+    for (const b of w.bosses ? Object.values(w.bosses) : []) {
+      if (b.seen && !b.slain) pins.push({ kind: 'boss', x: b.x, y: b.y, label: b.name, color: '#ff5c4d' });
+    }
+    return pins;
+  };
+
+  // The terrain image is cached: rebuilding it means sampling ~65k tiles, which
+  // is fine once a second but not once a frame. Redrawn when the visited set
+  // grows or after a second, and only in a browser — headless draw tests have no
+  // canvas to cache into and fall back to the pins and frame alone.
+  function worldMapImage(state) {
+    const w = state.world;
+    if (!w || typeof document === 'undefined') return null;
+    const visited = Object.keys(w.visited || {}).length;
+    const fresh = w._mapCanvas && w._mapVisited === visited && state.time - (w._mapT || -99) < 1;
+    if (fresh) return w._mapCanvas;
+    const World = window.World;
+    const PX = I.WORLD_MAP_PX;
+    const STEP = I.WORLD_MAP_TILES_PER_PX;
+    const cv = w._mapCanvas || document.createElement('canvas');
+    cv.width = PX;
+    cv.height = PX;
+    const c = cv.getContext('2d');
+    c.clearRect(0, 0, PX, PX);
+    const grid = w.world.grid;
+    const perChunk = World.CHUNK / STEP; // 8 map px per chunk
+    for (const key of Object.keys(w.visited || {})) {
+      const k = Number(key);
+      const cx = k % World.CHUNKS;
+      const cy = Math.floor(k / World.CHUNKS);
+      for (let py = 0; py < perChunk; py++) {
+        for (let px = 0; px < perChunk; px++) {
+          const tx = cx * World.CHUNK + px * STEP;
+          const ty = cy * World.CHUNK + py * STEP;
+          const t = grid[ty] ? grid[ty][tx] : 0;
+          let col;
+          if (t === Dungeon.TILE.WATER) col = '#2f4a66';
+          else if (t === Dungeon.TILE.CLIFF) col = '#3b3a42';
+          else if (t === Dungeon.TILE.ROAD) col = '#c9b37e';
+          else if (t === Dungeon.TILE.WALL) continue; // never generated
+          else col = World.biomeAt(w.world.seed, tx, ty).grass;
+          c.fillStyle = col;
+          c.fillRect(cx * perChunk + px, cy * perChunk + py, 1, 1);
+        }
+      }
+    }
+    w._mapCanvas = cv;
+    w._mapVisited = visited;
+    w._mapT = state.time;
+    return cv;
+  }
+
+  // The discovery record for a waystone standing on a given world tile.
+  I.waystoneAt = function waystoneAt(state, tx, ty) {
+    const w = state.world;
+    if (!w || !w.pois) return null;
+    for (const k of Object.keys(w.pois)) {
+      const p = w.pois[k];
+      if (p.kind === 'waystone' && p.x === tx && p.y === ty) return p;
+    }
+    return null;
+  };
+
+  I.drawWorldMap = function drawWorldMap(ctx, state, view) {
+    const L = I.worldMapLayout(view);
+    I.panelBg(ctx, L.panel, 0.97);
+    ctx.font = `bold 19px ${SERIF}`;
+    ctx.fillStyle = '#c9b37e';
+    ctx.textAlign = 'center';
+    ctx.fillText('THE KNOWN WORLD', L.panel.x + L.panel.w / 2, L.panel.y + 34);
+    ctx.textAlign = 'left';
+
+    // Unexplored ground reads as blank parchment, not as black.
+    ctx.fillStyle = '#171310';
+    ctx.fillRect(L.map.x, L.map.y, L.map.w, L.map.h);
+
+    const img = worldMapImage(state);
+    if (img) {
+      // Nearest-neighbour: this is a chunk map, and smoothing it into a blur
+      // would lose the one thing it is for — where the edges of the known are.
+      const smooth = ctx.imageSmoothingEnabled;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(img, L.map.x, L.map.y, L.map.w, L.map.h);
+      ctx.imageSmoothingEnabled = smooth;
+    }
+
+    ctx.strokeStyle = '#4a3b28';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(L.map.x - 1, L.map.y - 1, L.map.w + 2, L.map.h + 2);
+
+    const worldTiles = state.world && state.world.world ? state.world.world.width : 2048;
+    for (const pin of I.worldMapPins(state)) {
+      const pt = I.worldMapPoint(L, pin.x, pin.y, worldTiles);
+      ctx.fillStyle = pin.color;
+      if (pin.kind === 'town') {
+        ctx.fillRect(pt.x - 4, pt.y - 4, 8, 8);
+        ctx.font = `bold 10px ${SANS}`;
+        ctx.fillText(pin.label, pt.x + 8, pt.y + 4);
+      } else if (pin.kind === 'boss') {
+        ctx.beginPath();
+        ctx.moveTo(pt.x, pt.y - 5);
+        ctx.lineTo(pt.x + 5, pt.y + 4);
+        ctx.lineTo(pt.x - 5, pt.y + 4);
+        ctx.fill();
+      } else {
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // The hero, pulsing so it is findable among the pins.
+    const p = state.player;
+    const here = I.worldMapPoint(L, p.x / Dungeon.TILE_SIZE, p.y / Dungeon.TILE_SIZE, worldTiles);
+    const pulse = 0.55 + 0.45 * Math.sin(state.time * 6);
+    ctx.fillStyle = `rgba(255,255,255,${pulse})`;
+    ctx.fillRect(here.x - 2.5, here.y - 2.5, 5, 5);
+    ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(here.x - 2.5, here.y - 2.5, 5, 5);
+
+    ctx.font = `10px ${SANS}`;
+    ctx.fillStyle = 'rgba(215,200,175,0.6)';
+    ctx.textAlign = 'center';
+    ctx.fillText('Gold: camp · Violet: dungeon mouth · Blue: waystone · Red: world boss', L.panel.x + L.panel.w / 2, L.panel.y + L.panel.h - 32);
+    ctx.fillText('M or ESC: close', L.panel.x + L.panel.w / 2, L.panel.y + L.panel.h - 14);
+    ctx.textAlign = 'left';
+  };
 })();

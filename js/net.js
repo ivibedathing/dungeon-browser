@@ -17,6 +17,8 @@
   const Game = typeof window !== 'undefined' ? window.Game : require('./game.js');
   const Entities = typeof window !== 'undefined' ? window.Entities : require('./entities.js');
   const Dungeon = typeof window !== 'undefined' ? window.Dungeon : require('./dungeon.js');
+  const World = typeof window !== 'undefined' ? window.World : require('./world.js');
+  const Balance = typeof window !== 'undefined' ? window.Balance : require('./balance.js');
   const TS = Dungeon.TILE_SIZE;
 
   // The edge actions the server accepts (mirrors server Protocol.EDGES). The client
@@ -389,6 +391,9 @@
       const f = span > 0 ? U.clamp((target - a._rt) / span, 0, 1) : 0;
       return {
         floor: b.floor,
+        inWorld: !!b.inWorld,
+        worldSeed: b.worldSeed,
+        dungeonSeed: b.dungeonSeed,
         players: lerpList(a.players, b.players, f),
         monsters: lerpList(a.monsters, b.monsters, f),
         projectiles: lerpList(a.projectiles, b.projectiles, f),
@@ -401,6 +406,9 @@
     function project(snapshot) {
       return {
         floor: snapshot.floor,
+        inWorld: !!snapshot.inWorld,
+        worldSeed: snapshot.worldSeed,
+        dungeonSeed: snapshot.dungeonSeed,
         players: snapshot.players.map((e) => Object.assign({}, e)),
         monsters: snapshot.monsters.map((e) => Object.assign({}, e)),
         projectiles: snapshot.projectiles.map((e) => Object.assign({}, e)),
@@ -423,7 +431,8 @@
 
       // Replaying inputs needs the floor grid for collision; ensure it here so
       // reconcile works on the very first frame, before buildRenderState has run.
-      ensureFloor(predState, newest.floor);
+      ensureFloor(predState, newest.floor, newest);
+      streamWorld(predState);
 
       const p = predState.player;
       p.x = base.x;
@@ -502,6 +511,8 @@
         dead: false,
         deathT: 0,
         floor: 0,
+        inWorld: false,
+        world: null,
         dungeon: null,
         explored: null,
         flow: { field: null, t: 0 },
@@ -530,12 +541,53 @@
       };
     };
 
-    function ensureFloor(rs, floor) {
-      if (rs.dungeon && rs.floor === floor) return;
+    // Build whichever level the server says we are on. The overworld is built
+    // once and then STREAMED: its terrain is a pure function of the world seed,
+    // so the client generates the chunks around its own hero and arrives at
+    // byte-identical ground without the server sending a single tile.
+    function ensureFloor(rs, floor, snap) {
+      const inWorld = !!(snap && snap.inWorld);
+      if (inWorld) {
+        if (!rs.dungeon || !rs.dungeon.overworld) {
+          const seed = typeof snap.worldSeed === 'number' ? snap.worldSeed >>> 0 : net.seed;
+          const world = World.create(seed);
+          World.ensureChunk(world, World.TOWN_CX, World.TOWN_CY);
+          rs.world = { world, seed, active: new Set(), visited: {}, pois: {}, bosses: {}, cleared: {}, killed: {}, respawn: {} };
+          rs.dungeon = Game._.makeOverworldLevel(world);
+          rs.explored = Game._.makeWorldExplored();
+          rs.flow = { field: null, t: 0 };
+        }
+        rs.floor = floor;
+        rs.inWorld = true;
+        return;
+      }
+      // A dungeon reached through a mouth is generated from THAT mouth's seed,
+      // which the snapshot carries; only the classic descent falls back to the
+      // room seed. Getting this wrong desyncs the client's walls from the
+      // server's and makes the floor unplayable.
+      const dseed = snap && typeof snap.dungeonSeed === 'number' ? snap.dungeonSeed >>> 0 : net.seed;
+      if (rs.dungeon && !rs.dungeon.overworld && rs.floor === floor && rs.dungeonSeed === dseed) return;
       rs.floor = floor;
-      rs.dungeon = Dungeon.generateDungeon(net.seed, floor);
+      rs.inWorld = false;
+      rs.dungeonSeed = dseed;
+      rs.dungeon = Dungeon.generateDungeon(dseed, floor);
       rs.explored = Array.from({ length: rs.dungeon.height }, () => new Array(rs.dungeon.width).fill(false));
       rs.flow = { field: null, t: 0 };
+    }
+
+    // Keep terrain written around the local hero, and the palette in step with
+    // the ground underfoot. The client owns no entities out here — monsters and
+    // props arrive in the snapshot as they always have — so this is terrain only.
+    function streamWorld(rs) {
+      if (!rs.inWorld || !rs.world) return;
+      const TSz = Dungeon.TILE_SIZE;
+      const tx = Math.floor(rs.player.x / TSz);
+      const ty = Math.floor(rs.player.y / TSz);
+      const c = World.chunkOf(tx, ty);
+      World.ensureAround(rs.world.world, c.cx, c.cy, Balance.world.activeRadius + 1);
+      if (World.inBounds(c.cx, c.cy)) rs.world.visited[World.chunkKey(c.cx, c.cy)] = true;
+      const biome = World.biomeAt(rs.world.world.seed, tx, ty);
+      if (rs.dungeon.theme !== biome) rs.dungeon.theme = biome;
     }
 
     // Recompute the fog field from the local hero only (single-source): the veil,
@@ -543,17 +595,20 @@
     // see", so one source is correct here.
     function refreshFog(rs) {
       const grid = rs.dungeon.grid;
-      rs.flow.field = Dungeon.flowFieldMulti(grid, [{ x: Math.floor(rs.player.x / TS), y: Math.floor(rs.player.y / TS) }], 30);
+      const sources = [{ x: Math.floor(rs.player.x / TS), y: Math.floor(rs.player.y / TS) }];
+      const MAX = 30;
+      const rect = Dungeon.flowWindowRect(grid, sources, MAX);
+      rs.flow.field = Dungeon.flowFieldWindow(grid, sources, MAX, rect);
       const f = rs.flow.field;
-      for (let y = 0; y < rs.dungeon.height; y++) {
-        for (let x = 0; x < rs.dungeon.width; x++) {
-          if (f[y][x] <= 9) {
-            rs.explored[y][x] = true;
-            for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
-              const ny = y + dy;
-              const nx = x + dx;
-              if (rs.explored[ny] !== undefined && rs.explored[ny][nx] !== undefined) rs.explored[ny][nx] = true;
-            }
+      const sight = (rs.dungeon.sightTiles || 9) + 0;
+      for (let y = rect.y0; y <= rect.y1; y++) {
+        for (let x = rect.x0; x <= rect.x1; x++) {
+          if (Dungeon.flowAt(f, x, y) > sight) continue;
+          rs.explored[y][x] = true;
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+            const ny = y + dy;
+            const nx = x + dx;
+            if (rs.explored[ny] !== undefined && rs.explored[ny][nx] !== undefined) rs.explored[ny][nx] = true;
           }
         }
       }
@@ -561,7 +616,8 @@
 
     net.buildRenderState = function (rs, nowMs) {
       const interp = net.interpolatedAt(nowMs);
-      ensureFloor(rs, interp.floor);
+      ensureFloor(rs, interp.floor, net.newestSnapshot());
+      streamWorld(rs);
 
       rs.monsters = interp.monsters;
       rs.projectiles = interp.projectiles;

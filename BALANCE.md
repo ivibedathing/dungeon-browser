@@ -371,3 +371,40 @@ Payouts by posting floor (shortest ask of each kind):
 | 8 | 145g · 124xp | 419g · 359xp | 386g · 331xp | 580g · 497xp |
 | 12 | 204g · 175xp | 588g · 504xp | 543g · 466xp | 815g · 698xp |
 | 20 | 321g · 275xp | 928g · 796xp | 857g · 734xp | 1285g · 1102xp |
+
+## The overworld
+
+A 2048×2048-tile continent — 32×32 chunks of 64 —
+with Ashfall Camp at its centre. Danger runs along ONE axis: `ring`, the
+Chebyshev chunk distance from camp. Ring maps to an **effective floor** that
+feeds straight into the same `E.makeMonster` the dungeon uses, so hp/dmg/xp
+scaling, champion rolls and the `minFloor` type pool all come along unchanged —
+there is no second balance curve here.
+
+> effective floor = max(1, round(1.6 × ring)), and 0 inside the safe ring (ring ≤ 1)
+> monsters per chunk = min(8, round(2 + 0.45·ring) + rand(0..2))
+> champion chance = min(0.4, 0.05 + 0.022·ring)
+
+| ring | effective floor | monsters/chunk | champion | world boss | zombie hp | zombie dmg |
+| ---: | ---: | ---: | ---: | --- | ---: | ---: |
+| 0 | — (safe) | 0 | — | no | — | — |
+| 1 | — (safe) | 0 | — | no | — | — |
+| 2 | 3 | 3–5 | 9.4% | no | 62 | 15 |
+| 4 | 6 | 4–6 | 13.8% | no | 101 | 25 |
+| 6 | 10 | 5–7 | 18.2% | no | 159 | 38 |
+| 8 | 13 | 6–8 | 22.6% | 7%/chunk | 208 | 48 |
+| 10 | 16 | 7–9 | 27.0% | 7%/chunk | 260 | 58 |
+| 12 | 19 | 7–9 | 31.4% | 7%/chunk | 317 | 68 |
+| 14 | 22 | 8–10 | 35.8% | 7%/chunk | 378 | 79 |
+| 16 | 26 | 8–10 | 40.0% | 7%/chunk | 466 | 92 |
+
+| knob | value | why |
+| --- | --- | --- |
+| activeRadius | 2 chunks | a 5×5 live block (320² tiles), comfortably past the viewport |
+| activeChunkCap | 60 | a scattered party multiplies the live set; this is what the sim budget is sized against |
+| sightTiles | 18 | daylight, against a dungeon floor's 9 |
+| leashTiles | 16 | past this a chase is abandoned — without it a conga line forms across the map |
+| respawnSeconds | 240 | how long a cleared chunk stays cleared |
+| mouthChance | 0.16 | dungeon mouths per chunk (one POI roll per chunk) |
+| waystoneChance | 0.05 | waystones per chunk — the world's fast travel |
+

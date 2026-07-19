@@ -27,16 +27,21 @@
     return `rgb(${r},${g},${b})`;
   };
 
+  // How far the hero sees, in tiles. Dungeon floors are lit by torchlight; the
+  // overworld is daylight and carries its own, much larger radius on the level.
+  R.sightTiles = (state) => (state.dungeon && state.dungeon.sightTiles) || 9;
+
   R.isVisible = function isVisible(state, x, y) {
     const f = state.flow.field;
-    if (!f || !f[y]) return false;
-    if (f[y][x] <= 9) return true;
+    if (!f) return false;
+    const sight = R.sightTiles(state);
+    if (Dungeon.flowAt(f, x, y) <= sight) return true;
     // Walls glow when any neighboring floor is visible.
-    if (state.dungeon.grid[y][x] === Dungeon.TILE.WALL) {
+    const row = state.dungeon.grid[y];
+    if (row && row[x] !== undefined && !Dungeon.isWalkable(row[x])) {
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
-          const row = f[y + dy];
-          if (row && row[x + dx] <= 9) return true;
+          if (Dungeon.flowAt(f, x + dx, y + dy) <= sight) return true;
         }
       }
     }

@@ -32,7 +32,7 @@
   const HELD = { KeyW: 'w', KeyA: 'a', KeyS: 's', KeyD: 'd', ArrowUp: 'w', ArrowLeft: 'a', ArrowDown: 's', ArrowRight: 'd' };
   const EDGE = {
     Space: 'dodge', KeyE: 'interact', KeyI: 'inv', Tab: 'inv', KeyB: 'inv', KeyR: 'restart',
-    KeyQ: 'drink', KeyT: 'portal', KeyN: 'mute', KeyM: 'music', KeyK: 'tree', KeyC: 'stats',
+    KeyQ: 'drink', KeyT: 'portal', KeyN: 'mute', KeyJ: 'music', KeyM: 'map', KeyK: 'tree', KeyC: 'stats',
     KeyF: 'skill0', KeyG: 'skill1', KeyH: 'skill2',
     Digit1: 'belt0', Digit2: 'belt1', Digit3: 'belt2', Digit4: 'belt3', Escape: 'esc',
   };
@@ -60,7 +60,7 @@
   const SERVER_URL = servedByUs ? wsProto + location.host : wsProto + (location.hostname || '127.0.0.1') + ':8080';
 
   const savedRun = Save.load();
-  let state = savedRun ? Game.fromSave(savedRun) : Game.newRun((Math.random() * 0x7fffffff) | 0);
+  let state = savedRun ? Game.fromSave(savedRun) : Game.newSoloRun((Math.random() * 0x7fffffff) | 0);
 
   // ---- Character creation (solo start, or online character create) ----
   let creation = null;
@@ -81,7 +81,7 @@
       pendingCreateSlot = null;
       screen = 'charselect'; // the new character appears when the server replies
     } else {
-      state = Game.newRun((Math.random() * 0x7fffffff) | 0, { name, shirt });
+      state = Game.newSoloRun((Math.random() * 0x7fffffff) | 0, { name, shirt });
       Save.write(state);
       mode = 'solo';
       screen = 'playing';
@@ -322,7 +322,7 @@
   window.__rtt = (ms) => { if (net) net.latencyMs = ms | 0; };
   window.__input = input;
   window.__view = view;
-  window.__mods = { Game, Items, Entities, Dungeon, U, Save, Sfx, Skills, Quests, Net };
+  window.__mods = { Game, Items, Entities, Dungeon, World, U, Save, Sfx, Skills, Quests, Net };
 
   function clearEdges() {
     input.pressed.clear();

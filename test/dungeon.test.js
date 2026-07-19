@@ -163,3 +163,46 @@ test('flowField respects the maxDist cap', () => {
     }
   }
 });
+
+// ---- Windowed flow fields ----
+// The overworld cannot afford a whole-grid field. flowFieldWindow must be an
+// exact substitute inside its window, or monsters path differently depending on
+// which kind of level they stand on.
+
+test('flowFieldWindow agrees with flowFieldMulti inside the window and reads Infinity outside', () => {
+  const d = D.generateDungeon(2024, 3);
+  const sources = [
+    { x: d.entry.x, y: d.entry.y },
+    { x: d.stairs.x, y: d.stairs.y },
+  ];
+  const MAX = 30;
+  const full = D.flowFieldMulti(d.grid, sources, MAX);
+  const rect = D.flowWindowRect(d.grid, sources, MAX);
+  const win = D.flowFieldWindow(d.grid, sources, MAX, rect);
+
+  let inside = 0;
+  for (let y = 0; y < d.height; y++) {
+    for (let x = 0; x < d.width; x++) {
+      const w = D.flowAt(win, x, y);
+      const inWindow = x >= rect.x0 && x <= rect.x1 && y >= rect.y0 && y <= rect.y1;
+      if (inWindow) {
+        assert.equal(w, full[y][x], `mismatch at ${x},${y}`);
+        if (w !== Infinity) inside++;
+      } else {
+        assert.equal(w, Infinity, `outside the window ${x},${y} must read Infinity`);
+        assert.equal(full[y][x], Infinity, 'and nothing reachable should lie outside it');
+      }
+    }
+  }
+  assert.ok(inside > 200, `expected a substantial reachable set, got ${inside}`);
+});
+
+test('flowAt reads a plain whole-grid field too, so both level kinds share one accessor', () => {
+  const d = D.generateDungeon(7, 1);
+  const full = D.flowField(d.grid, d.entry.x, d.entry.y, 20);
+  assert.equal(D.flowAt(full, d.entry.x, d.entry.y), 0);
+  assert.equal(D.flowAt(full, -1, 0), Infinity);
+  assert.equal(D.flowAt(full, 0, -1), Infinity);
+  assert.equal(D.flowAt(full, d.width + 5, 0), Infinity);
+  assert.equal(D.flowAt(null, 0, 0), Infinity);
+});

@@ -12,6 +12,7 @@ if (typeof window === 'undefined') {
   require('./game/behaviors.js');
   require('./game/inventory.js');
   require('./game/town.js');
+  require('./game/world.js');
   require('./game/update.js');
   module.exports = require('./game/core.js');
 }

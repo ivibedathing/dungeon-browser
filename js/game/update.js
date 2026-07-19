@@ -120,8 +120,10 @@
     if (state.dead) {
       state.deathT += dt;
       if (localIn.pressed.has('restart')) {
-        // Headless restart keeps the identity; the browser opens character creation instead.
-        return Game.newRun((Math.random() * 0x7fffffff) | 0, { name: p.name, shirt: p.shirt });
+        // Headless restart keeps the identity; the browser opens character creation
+        // instead. A restarted run begins where a new one does — outside Ashfall.
+        const restart = Game.newSoloRun || Game.newRun;
+        return restart((Math.random() * 0x7fffffff) | 0, { name: p.name, shirt: p.shirt });
       }
       return state;
     }
@@ -129,15 +131,21 @@
     // Menu toggles and belt keys are local-player UI concerns (clients own these in Phase 2).
     if (localIn.pressed.has('inv')) {
       state.invOpen = !state.invOpen;
-      if (state.invOpen) state.treeOpen = state.boardOpen = state.statsOpen = false;
+      if (state.invOpen) state.treeOpen = state.boardOpen = state.statsOpen = state.mapOpen = false;
     }
     if (localIn.pressed.has('tree')) {
       state.treeOpen = !state.treeOpen;
-      if (state.treeOpen) state.invOpen = state.boardOpen = state.statsOpen = false;
+      if (state.treeOpen) state.invOpen = state.boardOpen = state.statsOpen = state.mapOpen = false;
     }
     if (localIn.pressed.has('stats')) {
       state.statsOpen = !state.statsOpen;
-      if (state.statsOpen) state.invOpen = state.treeOpen = state.boardOpen = false;
+      if (state.statsOpen) state.invOpen = state.treeOpen = state.boardOpen = state.mapOpen = false;
+    }
+    // The world map is only meaningful out on the continent; underground the
+    // minimap already shows the whole floor.
+    if (localIn.pressed.has('map') && state.inWorld) {
+      state.mapOpen = !state.mapOpen;
+      if (state.mapOpen) state.invOpen = state.treeOpen = state.boardOpen = state.statsOpen = false;
     }
     for (let i = 0; i < 4; i++) {
       if (localIn.pressed.has('belt' + i)) Game.useBelt(state, i);
@@ -151,7 +159,7 @@
       if (!pl.dead && !pl.down) updatePlayerAlways(state, pl, dt);
     }
 
-    if (state.invOpen || state.treeOpen || state.boardOpen || state.statsOpen) {
+    if (state.invOpen || state.treeOpen || state.boardOpen || state.statsOpen || state.mapOpen) {
       // Game world pauses while rummaging through bags, pondering the tree, or
       // reading the notices. Returning here also freezes the proximity flags
       // below, so the board stays live while you read it.
@@ -266,9 +274,13 @@
       return true;
     }
 
-    // Town comforts: the healing well and the vendor's trade range.
-    if (state.inTown) {
-      const d = state.dungeon;
+    // Town comforts: the healing well and the vendor's trade range. Ashfall is
+    // either the whole level (the classic portal trip) or a plaza stamped into
+    // the middle of the continent — the fixtures carry world coords either way,
+    // so the proximity checks below are identical.
+    const camp = state.inTown ? state.dungeon : state.inWorld && state.world ? state.world.world.town : null;
+    if (camp) {
+      const d = camp;
       const wx = (d.well.x + 0.5) * TS;
       const wy = (d.well.y + 0.5) * TS;
       if (p.hp < stats.maxHP && U.dist2(p.x, p.y, wx, wy) < 30 * 30) {
@@ -325,8 +337,19 @@
       const ptx = Math.floor(p.x / TS);
       const pty = Math.floor(p.y / TS);
       if (state.dungeon.grid[pty] && state.dungeon.grid[pty][ptx] === Dungeon.TILE.STAIRS_DOWN) {
-        G.descend(state);
-        return true;
+        // The same tile means two different things depending on where you are
+        // standing: underground it is the way deeper, out in the world it is the
+        // mouth of a dungeon that has its own seed and its own starting floor.
+        if (state.inWorld) {
+          const poi = G.mouthAt(state, ptx, pty);
+          if (poi) {
+            Game.enterMouth(state, poi);
+            return true;
+          }
+        } else {
+          G.descend(state);
+          return true;
+        }
       }
     }
 
@@ -345,31 +368,39 @@
     state.portalCdT = Math.max(0, state.portalCdT - dt);
     for (const po of state.portals) po.armT = Math.max(0, po.armT - dt);
 
+    // Overworld: move the activation set before anything reads the monster list,
+    // so a chunk that just came live ticks on the same frame it was populated.
+    if (state.inWorld) G.worldUpdate(state, dt);
+
     // Flow field for AI + fog-of-war visibility (recomputed a few times per second),
     // seeded from every living player so monsters route to whoever is closest.
     state.flow.t -= dt;
     if (!state.flow.field || state.flow.t <= 0) {
       state.flow.t = 0.18;
-      state.flow.field = Dungeon.flowFieldMulti(
-        state.dungeon.grid,
-        state.players
-          .filter((pl) => !pl.dead && !pl.down)
-          .map((pl) => ({ x: Math.floor(pl.x / TS), y: Math.floor(pl.y / TS) })),
-        30
-      );
-      // Mark explored tiles (wall-aware visibility from the flow field).
+      const grid = state.dungeon.grid;
+      const sources = state.players
+        .filter((pl) => !pl.dead && !pl.down)
+        .map((pl) => ({ x: Math.floor(pl.x / TS), y: Math.floor(pl.y / TS) }));
+      const MAX = 30;
+      // The field is windowed to the party's bounding box plus reach. On a dungeon
+      // floor that is most of the grid and costs nothing; on the 2048² overworld it
+      // is the difference between 4.2M cells per rebuild and a few thousand.
+      const rect = Dungeon.flowWindowRect(grid, sources, MAX);
+      state.flow.field = Dungeon.flowFieldWindow(grid, sources, MAX, rect);
+      // Mark explored tiles (wall-aware visibility from the flow field), bounded by
+      // the same window — scanning the whole grid here is the other 4.2M-cell loop.
       const f = state.flow.field;
-      for (let y = 0; y < state.dungeon.height; y++) {
-        for (let x = 0; x < state.dungeon.width; x++) {
-          if (f[y][x] <= 9) {
-            state.explored[y][x] = true;
-            // Explored walls: mark walls adjacent to visible floor.
-            for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
-              const ny = y + dy;
-              const nx = x + dx;
-              if (state.explored[ny] !== undefined && state.explored[ny][nx] !== undefined) {
-                state.explored[ny][nx] = true;
-              }
+      const sight = (state.dungeon.sightTiles || 9) + 0;
+      for (let y = rect.y0; y <= rect.y1; y++) {
+        for (let x = rect.x0; x <= rect.x1; x++) {
+          if (Dungeon.flowAt(f, x, y) > sight) continue;
+          state.explored[y][x] = true;
+          // Explored walls: mark walls adjacent to visible floor.
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+            const ny = y + dy;
+            const nx = x + dx;
+            if (state.explored[ny] !== undefined && state.explored[ny][nx] !== undefined) {
+              state.explored[ny][nx] = true;
             }
           }
         }
@@ -491,14 +522,27 @@
     if (!state.dead && !state.inTown && !G.arenaHeld(state) && state.players.length > 1) {
       const living = state.players.filter((pl) => !pl.dead && !pl.down);
       const onIt = living.filter((pl) => onStairs(state, pl));
+      // A STAIRS_DOWN tile means two different things depending on where the
+      // party is standing, exactly as it does on the solo path: underground it
+      // is the way deeper, out on the continent it is the mouth of a dungeon
+      // with its own seed and its own starting floor. Without this the shared
+      // descent called G.descend out in the world, which replaced the whole
+      // continent with a runSeed floor and left no stash to climb back through
+      // — the party lost the overworld permanently.
+      const go = () => {
+        if (!state.inWorld) return G.descend(state);
+        const lead = onIt[0];
+        const poi = G.mouthAt(state, Math.floor(lead.x / TS), Math.floor(lead.y / TS));
+        if (poi) Game.enterMouth(state, poi);
+      };
       if (onIt.length > 0 && living.length > 0) {
         if (onIt.length === living.length) {
-          G.descend(state);
+          go();
           return state;
         }
         state.descendT = (state.descendT == null ? C.descendCountdown : state.descendT) - dt;
         if (state.descendT <= 0) {
-          G.descend(state);
+          go();
           return state;
         }
       } else {

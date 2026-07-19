@@ -121,13 +121,27 @@ test('two clients share a room by code, move independently, and both see the wor
   assert.match(code, /^[A-Z0-9]{4,6}$/, 'welcome carries a join code');
   assert.equal(host.welcome.you, 'p0', 'host is p0');
 
-  // The seed in the welcome must reproduce the server room's floor 1 grid, so a
-  // Phase 2 client can regenerate the map instead of receiving it every tick.
+  // A seed in the welcome is what lets a client regenerate the map instead of
+  // receiving it every tick. A room is a shared continent now, so the level the
+  // client rebuilds is the overworld — from the worldSeed the snapshot carries.
   assert.equal(typeof host.welcome.seed, 'number', 'welcome carries the room seed');
-  const mine = Dungeon.generateDungeon(host.welcome.seed, 1);
-  const theirs = srv.rooms.get(code).state.dungeon;
+  const room = srv.rooms.get(code);
+  assert.equal(room.state.inWorld, true, 'a room should be on the continent');
+  const snap = room.snapshotFor(host.welcome.you);
+  assert.equal(snap.inWorld, true, 'the snapshot must say which kind of level this is');
+  assert.equal(typeof snap.worldSeed, 'number', 'the snapshot must carry the world seed');
+  const World = require('../js/world.js');
+  const mine = World.create(snap.worldSeed);
+  const theirs = room.state.world.world;
   assert.equal(mine.width, theirs.width);
-  assert.deepEqual(mine.stairs, theirs.stairs, 'client-regenerated grid matches the server floor');
+  // Client-regenerated terrain matches the server's, tile for tile.
+  World.ensureChunk(mine, World.TOWN_CX, World.TOWN_CY);
+  World.ensureChunk(theirs, World.TOWN_CX, World.TOWN_CY);
+  for (let y = World.TOWN_CY * 64; y < World.TOWN_CY * 64 + 64; y += 9) {
+    for (let x = World.TOWN_CX * 64; x < World.TOWN_CX * 64 + 64; x += 9) {
+      assert.equal(mine.grid[y][x], theirs.grid[y][x], `client-regenerated tile ${x},${y} differs`);
+    }
+  }
 
   const guest = new Client(url);
   await guest.open();

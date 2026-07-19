@@ -15,6 +15,7 @@
       state.treeOpen = false;
       state.boardOpen = false;
       state.statsOpen = false;
+      state.mapOpen = false;
     }
     if (state.dead) return;
 
@@ -30,6 +31,29 @@
         if (!q || !I.inRect(mx, my, L.boardActive[i])) continue;
         if (input.mouse.click && Quests.isComplete(q)) Game.claimQuest(state, i);
         if (input.mouse.rclick) Game.abandonQuest(state, i);
+      }
+      return;
+    }
+
+    // World map: click an unlocked waystone to travel to it. Locked and merely
+    // discovered pins are inert — a waystone has to be touched once on foot.
+    if (state.mapOpen) {
+      const ML = I.worldMapLayout(view);
+      const worldTiles = state.world && state.world.world ? state.world.world.width : 2048;
+      for (const pin of I.worldMapPins(state)) {
+        if (pin.kind !== 'waystone') continue;
+        const pt = I.worldMapPoint(ML, pin.x, pin.y, worldTiles);
+        if (Math.hypot(mx - pt.x, my - pt.y) > 9) continue;
+        state.hover = { text: pin.label, x: mx, y: my };
+        const target = I.waystoneAt(state, pin.x, pin.y);
+        if (input.mouse.click && target && target.unlocked) {
+          Game.useWaystone(state, target);
+          state.mapOpen = false;
+        }
+        // One click is one journey: the 9px hit radius covers ~37 world tiles at
+        // map scale, so two neighbouring pins can both match and the second
+        // would teleport you straight back out of the first.
+        break;
       }
       return;
     }

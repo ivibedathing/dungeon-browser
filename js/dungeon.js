@@ -7,10 +7,14 @@
 
   const D = {};
 
-  D.TILE = { WALL: 0, FLOOR: 1, ENTRY: 2, STAIRS_DOWN: 3 };
+  // WATER and CLIFF are the overworld's two impassable kinds — being non-walkable
+  // is the whole trick: collision, the flow field, and monster pathing all route
+  // around them with no new code. ROAD is walkable and is what guarantees the
+  // continent stays connected across noise-carved lakes and ridges.
+  D.TILE = { WALL: 0, FLOOR: 1, ENTRY: 2, STAIRS_DOWN: 3, WATER: 4, CLIFF: 5, ROAD: 6 };
   D.TILE_SIZE = 32;
 
-  const WALKABLE = (t) => t === D.TILE.FLOOR || t === D.TILE.ENTRY || t === D.TILE.STAIRS_DOWN;
+  const WALKABLE = (t) => t === D.TILE.FLOOR || t === D.TILE.ENTRY || t === D.TILE.STAIRS_DOWN || t === D.TILE.ROAD;
   D.isWalkable = WALKABLE;
 
   D.THEMES = [
@@ -31,65 +35,91 @@
 
   D.TOWN_THEME = { name: 'Ashfall Camp', wall: '#403a32', wallEdge: '#262019', floorA: '#55503f', floorB: '#4d4839', torch: '#ffc26e', fog: '#0b0a08' };
 
-  // The safe hub reached through a town portal: open plaza, healing well, vendor. No monsters.
-  D.generateTown = function (seed) {
-    const W = 34;
-    const H = 26;
+  D.TOWN_W = 34;
+  D.TOWN_H = 26;
+
+  // Write Ashfall Camp's plaza into an existing grid at offset (ox, oy) and hand
+  // back its fixtures in that grid's coordinates. Extracted from generateTown so
+  // the camp can be stamped into the overworld at the centre chunk and be the
+  // same place, with the same layout, that the town portal has always led to —
+  // which is what lets the proximity flags in updatePlayerActions and the whole
+  // vendor/smith/board UI carry over untouched.
+  D.stampTown = function (grid, ox, oy, seed) {
+    const W = D.TOWN_W;
+    const H = D.TOWN_H;
     const rng = U.mulberry32(((seed >>> 0) ^ 0x7a3f) >>> 0);
-    const grid = Array.from({ length: H }, () => new Array(W).fill(D.TILE.WALL));
     const plaza = { x: 5, y: 5, w: W - 10, h: H - 10 };
+    const put = (x, y, t) => {
+      if (grid[oy + y] && grid[oy + y][ox + x] !== undefined) grid[oy + y][ox + x] = t;
+    };
     for (let y = plaza.y; y < plaza.y + plaza.h; y++) {
-      for (let x = plaza.x; x < plaza.x + plaza.w; x++) {
-        grid[y][x] = D.TILE.FLOOR;
-      }
+      for (let x = plaza.x; x < plaza.x + plaza.w; x++) put(x, y, D.TILE.FLOOR);
     }
-    const entry = { x: Math.floor(W / 2), y: Math.floor(H / 2) + 4 };
-    const well = { x: plaza.x + 4, y: Math.floor(H / 2) };
-    const vendor = { x: plaza.x + plaza.w - 5, y: Math.floor(H / 2) };
-    const smith = { x: plaza.x + 7, y: plaza.y + plaza.h - 4 };
+    const at = (x, y) => ({ x: ox + x, y: oy + y });
+    const entry = at(Math.floor(W / 2), Math.floor(H / 2) + 4);
+    const well = at(plaza.x + 4, Math.floor(H / 2));
+    const vendor = at(plaza.x + plaza.w - 5, Math.floor(H / 2));
+    const smith = at(plaza.x + 7, plaza.y + plaza.h - 4);
     // The notice board hangs well clear of the stall: their interaction ranges
     // must never overlap, or one E press would try to serve both.
-    const board = { x: plaza.x + plaza.w - 7, y: plaza.y + 3 };
-    grid[entry.y][entry.x] = D.TILE.ENTRY;
+    const board = at(plaza.x + plaza.w - 7, plaza.y + 3);
+    put(entry.x - ox, entry.y - oy, D.TILE.ENTRY);
 
     // Scattered ruined pillars for flavor — single tiles can never split an open plaza.
     for (let k = 0; k < 7; k++) {
       const px = U.randInt(rng, plaza.x + 2, plaza.x + plaza.w - 3);
       const py = U.randInt(rng, plaza.y + 2, plaza.y + plaza.h - 3);
-      const nearSpot = [entry, well, vendor, smith, board].some((s) => Math.hypot(px - s.x, py - s.y) < 3.5);
-      if (!nearSpot) grid[py][px] = D.TILE.WALL;
+      const nearSpot = [entry, well, vendor, smith, board].some((s) => Math.hypot(ox + px - s.x, oy + py - s.y) < 3.5);
+      if (!nearSpot) put(px, py, D.TILE.WALL);
     }
 
     const torches = [];
     for (let x = plaza.x; x < plaza.x + plaza.w; x++) {
       if ((x - plaza.x) % 5 === 2) {
-        torches.push({ x, y: plaza.y - 1 });
-        torches.push({ x, y: plaza.y + plaza.h });
+        torches.push(at(x, plaza.y - 1));
+        torches.push(at(x, plaza.y + plaza.h));
       }
     }
     for (let y = plaza.y; y < plaza.y + plaza.h; y++) {
       if ((y - plaza.y) % 5 === 2) {
-        torches.push({ x: plaza.x - 1, y });
-        torches.push({ x: plaza.x + plaza.w, y });
+        torches.push(at(plaza.x - 1, y));
+        torches.push(at(plaza.x + plaza.w, y));
       }
     }
 
     return {
-      grid,
-      width: W,
-      height: H,
-      rooms: [{ ...plaza, cx: entry.x, cy: entry.y }],
+      plaza: { x: ox + plaza.x, y: oy + plaza.y, w: plaza.w, h: plaza.h, cx: entry.x, cy: entry.y },
       entry,
-      stairs: null,
-      spawns: [],
-      torches,
-      theme: D.TOWN_THEME,
-      floor: 0,
-      town: true,
       well,
       vendor,
       smith,
       board,
+      torches,
+    };
+  };
+
+  // The safe hub reached through a town portal: open plaza, healing well, vendor. No monsters.
+  D.generateTown = function (seed) {
+    const W = D.TOWN_W;
+    const H = D.TOWN_H;
+    const grid = Array.from({ length: H }, () => new Array(W).fill(D.TILE.WALL));
+    const t = D.stampTown(grid, 0, 0, seed);
+    return {
+      grid,
+      width: W,
+      height: H,
+      rooms: [t.plaza],
+      entry: t.entry,
+      stairs: null,
+      spawns: [],
+      torches: t.torches,
+      theme: D.TOWN_THEME,
+      floor: 0,
+      town: true,
+      well: t.well,
+      vendor: t.vendor,
+      smith: t.smith,
+      board: t.board,
     };
   };
 
@@ -556,6 +586,96 @@
   };
 
   D.flowField = (grid, tx, ty, maxDist) => D.flowFieldMulti(grid, [{ x: tx, y: ty }], maxDist);
+
+  // The same BFS, but allocated only over `rect` — a whole-grid field is fine on a
+  // 120x120 floor and fatal on the 2048x2048 overworld, where it would be 4.2M
+  // cells rebuilt several times a second. Returns a window descriptor read through
+  // D.flowAt; anything outside reads Infinity.
+  //
+  // A window sized to the sources' bounding box expanded by maxDist + 2 loses
+  // nothing: no path of at most maxDist steps from a source can reach a tile
+  // outside it, so the clipped BFS agrees with the whole-grid one everywhere the
+  // window covers. `D.flowWindowRect` builds exactly that rect.
+  D.flowWindowRect = function (grid, sources, maxDist) {
+    const h = grid.length;
+    const w = grid[0].length;
+    if (!sources.length) return { x0: 0, y0: 0, x1: -1, y1: -1 };
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const s of sources) {
+      if (s.x < minX) minX = s.x;
+      if (s.y < minY) minY = s.y;
+      if (s.x > maxX) maxX = s.x;
+      if (s.y > maxY) maxY = s.y;
+    }
+    const pad = maxDist + 2;
+    return {
+      x0: Math.max(0, Math.floor(minX) - pad),
+      y0: Math.max(0, Math.floor(minY) - pad),
+      x1: Math.min(w - 1, Math.ceil(maxX) + pad),
+      y1: Math.min(h - 1, Math.ceil(maxY) + pad),
+    };
+  };
+
+  D.flowFieldWindow = function (grid, sources, maxDist, rect) {
+    const gh = grid.length;
+    const gw = grid[0].length;
+    const r = rect || D.flowWindowRect(grid, sources, maxDist);
+    const x0 = Math.max(0, r.x0 | 0);
+    const y0 = Math.max(0, r.y0 | 0);
+    const x1 = Math.min(gw - 1, r.x1 | 0);
+    const y1 = Math.min(gh - 1, r.y1 | 0);
+    const w = Math.max(0, x1 - x0 + 1);
+    const h = Math.max(0, y1 - y0 + 1);
+    const field = Array.from({ length: h }, () => new Array(w).fill(Infinity));
+    const flow = { field, x0, y0, w, h };
+    if (!w || !h) return flow;
+    const q = [];
+    for (const s of sources) {
+      const lx = s.x - x0;
+      const ly = s.y - y0;
+      if (lx < 0 || ly < 0 || lx >= w || ly >= h) continue;
+      if (!WALKABLE(grid[s.y][s.x])) continue;
+      if (field[ly][lx] === 0) continue;
+      field[ly][lx] = 0;
+      q.push([lx, ly]);
+    }
+    let head = 0;
+    while (head < q.length) {
+      const [x, y] = q[head++];
+      const d = field[y][x];
+      if (d >= maxDist) continue;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        if (field[ny][nx] !== Infinity) continue;
+        if (!WALKABLE(grid[ny + y0][nx + x0])) continue;
+        field[ny][nx] = d + 1;
+        q.push([nx, ny]);
+      }
+    }
+    return flow;
+  };
+
+  // The one way to read a flow field. Accepts either a windowed field from
+  // flowFieldWindow or a plain whole-grid array from flowFieldMulti, so dungeon
+  // floors and the overworld share every consumer.
+  D.flowAt = function (flow, x, y) {
+    if (!flow) return Infinity;
+    if (flow.field) {
+      const lx = x - flow.x0;
+      const ly = y - flow.y0;
+      if (lx < 0 || ly < 0 || lx >= flow.w || ly >= flow.h) return Infinity;
+      return flow.field[ly][lx];
+    }
+    const row = flow[y];
+    if (!row) return Infinity;
+    const v = row[x];
+    return v === undefined ? Infinity : v;
+  };
 
   if (typeof window !== 'undefined') window.Dungeon = D;
   if (typeof module !== 'undefined') module.exports = D;

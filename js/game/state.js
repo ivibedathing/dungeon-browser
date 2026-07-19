@@ -11,8 +11,13 @@
     // Seeded sim RNG: all gameplay-affecting rolls draw from this stream so a
     // room's outcome is a pure function of (runSeed, floor, inputs). Cosmetic
     // randomness (particle scatter, shake jitter) stays on Math.random.
-    state.srand = U.mulberry32((((state.runSeed >>> 0) ^ Math.imul(state.floor, 2654435761)) >>> 0) + 1);
-    const dungeon = Dungeon.generateDungeon(state.runSeed, state.floor);
+    // Which dungeon this is. Every mouth in the overworld carries its own seed,
+    // so the same hole always leads to the same place and two mouths never lead
+    // to the same one. Absent (the classic descent from floor 1) it is the run
+    // seed, exactly as before.
+    const dungeonSeed = state.dungeonSeed === undefined || state.dungeonSeed === null ? state.runSeed : state.dungeonSeed;
+    state.srand = U.mulberry32((((dungeonSeed >>> 0) ^ Math.imul(state.floor, 2654435761)) >>> 0) + 1);
+    const dungeon = Dungeon.generateDungeon(dungeonSeed, state.floor);
     state.dungeon = dungeon;
     state.explored = Array.from({ length: dungeon.height }, () => new Array(dungeon.width).fill(false));
     // Party size for this floor: the room stamps state.partyN; solo is one player ⇒ n=1
@@ -78,8 +83,13 @@
     state.floatTexts = [];
     state.projectiles = [];
     state.portals = [];
-    state.stash = null;
+    // A fresh floor abandons a stashed floor — but NOT a stashed overworld. The
+    // continent is the outer level and dungeon floors are the inner churn, so it
+    // has to survive every descent beneath it; dropping it here would strand the
+    // hero underground with no way back to the surface.
+    if (!(state.stash && state.stash.overworld)) state.stash = null;
     state.inTown = false;
+    state.inWorld = false; // a dungeon floor is never the overworld
     state.shop = null;
     state.trading = false;
     state.smithing = false;
@@ -139,6 +149,11 @@
     player.dodgeDir = { x: 1, y: 0 };
     const state = {
       runSeed: seed >>> 0,
+      // The continent is its own seed so a run's dungeons and its world can be
+      // reasoned about (and regenerated) independently.
+      worldSeed: (((seed >>> 0) * 2654435761) >>> 0) ^ 0x5eed,
+      inWorld: false,
+      world: null,
       floor: 1,
       nextId: 1,
       player,
@@ -173,6 +188,7 @@
       milestones: [],
       events: [],
       statsOpen: false,
+      mapOpen: false,
       // Set once the finished run's tally has been folded into the lifetime
       // total, so the stats panel stops adding the run on top of it.
       statsBanked: false,
@@ -239,6 +255,60 @@
       }
     }
     makeFloorState(state);
+
+    // Resume on the continent. Every save lands here: a new-format save restores
+    // the world it recorded, and a LEGACY dungeon save — written before the world
+    // existed, so carrying no world block at all — walks out of Ashfall Camp with
+    // its hero, level, bag and quests intact. The hero is the durable thing; the
+    // place they stand is regenerated either way.
+    if (typeof Game.enterWorld === 'function') {
+      if (typeof data.worldSeed === 'number') state.worldSeed = data.worldSeed >>> 0;
+      const saved = data.world;
+      const World = typeof window !== 'undefined' ? window.World : require('../world.js');
+      const world = World.create(state.worldSeed);
+      World.ensureChunk(world, World.TOWN_CX, World.TOWN_CY);
+      const camp = World.town(world);
+      state.world = {
+        world,
+        seed: state.worldSeed,
+        active: new Set(),
+        visited: saved && typeof Save !== 'undefined' ? Save.unpackChunks(saved.visited) : {},
+        pois: {},
+        bosses: {},
+        cleared: {},
+        killed: {},
+        respawn: {},
+      };
+      // Rehydrate discovery against freshly regenerated POIs, so a save can never
+      // resurrect a landmark the generator no longer places.
+      for (const rec of (saved && saved.pois) || []) {
+        const cx = rec.k % World.CHUNKS;
+        const cy = Math.floor(rec.k / World.CHUNKS);
+        World.ensureChunk(world, cx, cy);
+        const poi = world.pois[rec.k];
+        if (!poi) continue;
+        state.world.pois[rec.k] = { ...poi, found: !!rec.f, unlocked: !!rec.u };
+      }
+      for (const rec of (saved && saved.bosses) || []) {
+        // Coordinates come from the save. Defaulting them to (0,0) put every
+        // remembered boss pin in the map's far north-west corner, thousands of
+        // tiles from where the thing actually stands.
+        const bc = World.chunkCenter(rec.k % World.CHUNKS, Math.floor(rec.k / World.CHUNKS));
+        state.world.bosses[rec.k] = {
+          x: typeof rec.x === 'number' && rec.x ? rec.x : bc.x,
+          y: typeof rec.y === 'number' && rec.y ? rec.y : bc.y,
+          name: 'A world boss',
+          seen: !!rec.s,
+          slain: !!rec.d,
+        };
+      }
+      const TSl = TS;
+      const at = data.worldPos
+        ? { x: Math.floor(data.worldPos.x / TSl), y: Math.floor(data.worldPos.y / TSl) }
+        : { x: camp.entry.x, y: camp.entry.y + 2 };
+      Game.enterWorld(state, at);
+    }
+
     const fullStats = Entities.effectiveStats(p);
     p.hp = Math.min(typeof sp.hp === 'number' ? sp.hp : fullStats.maxHP, fullStats.maxHP);
     p.mana = Math.min(typeof sp.mana === 'number' ? sp.mana : fullStats.maxMana, fullStats.maxMana);

@@ -94,20 +94,24 @@ your.domain {
 | **K** | Skill tree — spend skill points (1 per level) across War, Sorcery, and Faith |
 | **C** | Statistics — your tally sheet for this run beside your lifetime totals (game pauses) |
 | **E** | Pick up the nearest item (or buy a potion at the vendor, or read the notice board); gold is picked up by walking over it |
-| **T** | Town Portal — opens a portal to Ashfall Camp (15 s cooldown); step in to travel, return the same way |
+| **T** | Town Portal — inside a dungeon, opens a portal back to the mouth you came down (15 s cooldown); step in to travel. Under open sky it fizzles: Ashfall is a place in the world, reached on foot or by waystone |
 | **1–4** | Drink a potion from the belt |
 | **Q** | Drink the first available belt potion |
 | **I** / Tab / B | Toggle inventory (game pauses) |
 | Mouse | Inventory: hover for tooltips (**hold CTRL to compare against your equipped item**), click to equip/drink, right-click to drop. At the vendor: click wares to buy, click your items to **sell**, **SELL ALL** to liquidate the haul (potions stay), and the **buy-back shelf** returns your last three sales at the price paid. At the anvil: click weapons to **upgrade**. At the notice board: click a notice to **take** it, click a finished quest to **claim** it, right-click to abandon |
+| **M** | World map — the continent as you have explored it, pinned with the camp, discovered dungeon mouths, woken waystones, and world bosses you have seen. Click an unlocked waystone to travel there (game pauses) |
 | **N** | Mute / unmute sound effects |
-| **M** | Mute / unmute music |
+| **J** | Mute / unmute music |
 | **R** | Rise again after death (fresh run) |
 
 ## The game
 
+- **The overworld** — a **2048×2048-tile continent** (65,536 px on a side) that you roam freely, walled by cliffs to the north and east and open water to the south and west, so you are stopped by terrain rather than by an invisible box. Ashfall Camp sits at its centre and a new run begins at its gate. Terrain, roads, biomes and landmarks are all a pure function of the world seed, generated chunk by chunk as you walk — six biomes (Ashen Plains, Thornwood, Marshfen, Bone Barrens, Frostcrag Highlands, Emberwaste), each with its own palette. Connectivity is guaranteed by construction: every chunk carves a road toward its parent in a spanning tree rooted at the camp, bridging water and cutting passes through cliff, so everywhere is reachable on foot.
+- **Danger is distance from home** — the world's one difficulty dial is your Chebyshev chunk distance from Ashfall. It maps to an *effective floor* that feeds the same monster scaling the dungeon uses, so hp/damage/XP, champion rolls and the monster pool all deepen as you walk outward. The camp and its eight neighbouring chunks are a hard safe ring; from eight chunks out, a chunk can hold a **world boss**, pinned on your map once you have seen it. Monsters out here live somewhere: they drift between waypoints near home, and a chase that drags one too far is abandoned for a walk back.
+- **Dungeon mouths and waystones** — dungeons are holes in the ground you find by exploring. Each carries its own seed (the same hole always leads to the same place) and a starting floor scaled by how far out it is; step on one to descend, and **T** brings you back up to it. **Waystones** scattered across the world are found on sight but wake only on touch — once woken, any two connect, which is what makes a 65,536-px world crossable more than once.
 - **Procedural dungeons** — rooms + corridors, regenerated every floor; find the glowing stairs to descend. Themes shift every 4 floors (Catacombs → Cold Caves → Burning Depths), with fog of war, torch light, and a minimap. **Past floor 10 the dungeon changes character**: mazier warrens of small chambers in new palettes (Fungal Hollows → Frozen Abyss → Obsidian Warrens).
 - **Character creation** — name your hero and pick a shirt color; both persist through saves and show in-game.
-- **Waypoints** — every 5th floor you reach by stairs adds a labeled shortcut portal to Ashfall Camp for the rest of that run.
+- **Waypoints** — every 5th floor you reach by stairs adds a labeled shortcut portal for the rest of that run. (Distinct from overworld waystones, which move you around the surface.)
 - **Monsters get stronger every floor** (HP/damage/XP scale up, packs get bigger). Champions (orange ring, named) are rarer, much tougher, and always drop loot. Alongside the melee horde (zombies, skeletons, brutes, ghouls, hounds, spiders, armored skeletons, ogres…) deeper floors add **special foes with their own tricks** — spellcasters that kite and lob dodgeable bolts, exploders that rush in and detonate, chargers that wind up and dash, and necromancers that raise minions. Each telegraphs its wind-up, so every special is dodgeable.
 - **Boss arenas every 2nd floor** — a named Floor Guardian (huge, ~8× champion-class health, knockback-resistant) holds the farthest room and guards the stairs. Entering locks the camera on the arena and raises a boss health bar; the kill pays 10× XP and guaranteed magic-or-better double loot.
 - **Level ups** — XP from kills; each level: +14 max life, +6 max mana, +2 damage, **+1 skill point**, full heal.
@@ -118,7 +122,7 @@ your.domain {
 - **Quests** — the camp's **notice board** (press **E** to read it) posts three notices, rolled fresh each visit and scaled to your depth: *hunts* ("slay 10 bats" — only for monsters that spawn that deep), *champion bounties*, and *delves* ("descend to floor 8"). Carry up to three at once; progress tracks under the minimap as you play, a gold **!** over the board means a payout is waiting, and claiming pays gold **and** experience. Right-click tears one up. The charter survives saves.
 - **Potions** — five tiers scaling with depth, healing gradually over 1.2 s. The belt holds four for quick keys; overflow fills a **potion box** (5 healing + 5 mana) in the inventory that auto-refills the belt — potions never crowd your bag. Click a boxed potion to drink it (right-click drops it).
 - **Sound** — procedurally synthesized effects (Web Audio, no asset files).
-- **Music** — an original 8-bit score in the idiom of the era's JRPG and adventure soundtracks, synthesized at runtime from note data (again, no asset files). Four looping tracks follow the game: an arpeggiated **prelude** on the menus, a lyrical major-key **town** theme in Ashfall Camp, a minor-key **dungeon** ostinato on the floors, and driving **battle** music that takes over the moment you step into a boss arena and hands back when it ends. The voice layout is the NES's — two pulse channels for melody and harmony, a triangle bass, and filtered noise for percussion. Music mutes separately from effects (**M** vs **N**), and both settings persist.
+- **Music** — an original 8-bit score in the idiom of the era's JRPG and adventure soundtracks, synthesized at runtime from note data (again, no asset files). Four looping tracks follow the game: an arpeggiated **prelude** on the menus, a lyrical major-key **town** theme in Ashfall Camp, a minor-key **dungeon** ostinato on the floors, and driving **battle** music that takes over the moment you step into a boss arena and hands back when it ends. The voice layout is the NES's — two pulse channels for melody and harmony, a triangle bass, and filtered noise for percussion. Music mutes separately from effects (**J** vs **N**), and both settings persist.
 - **Death is permanent** — a new run starts from Floor 1. How deep can you go?
 
 ## Balance
@@ -139,7 +143,7 @@ Pure logic (RNG, dungeon + town generation, items, trade prices, quests, entitie
 node --test test/*.test.js
 ```
 
-`verify.html` is a test harness for headless-Chrome screenshot verification (scenes: `#combat`, `#inv`, `#death`, `#town`, `#trade`, `#board`, `#fireball`, `#save`).
+`verify.html` is a test harness for headless-Chrome screenshot verification (scenes: `#combat`, `#inv`, `#death`, `#town`, `#trade`, `#board`, `#fireball`, `#save`, plus the overworld set `#world`, `#coast`, `#cliff`, `#road`, `#camp`, `#mouth`, `#waystone`, `#worldmap`).
 
 ### Code layout
 
@@ -151,8 +155,9 @@ Every file is a dual-mode IIFE: a browser `<script>` (globals, loaded in `index.
 | `js/save.js` · `js/audio.js` | localStorage saves · synthesized sound |
 | `js/skills.js` · `js/items.js` · `js/entities.js` | skill tree · item generation & pricing · monster/player stats |
 | `js/quests.js` | notice-board quest generation, progress, and rewards |
-| `js/dungeon.js` | procedural dungeon + town generation |
-| `js/game/` | simulation — `core` (events, collision), `state` (runs/floors/save restore), `combat`, `ai`, `inventory`, `town` (services + quest board), `update` (frame step) |
+| `js/dungeon.js` | procedural dungeon + town generation, flow fields |
+| `js/world.js` | the overworld — terrain, biomes, roads, rings, landmarks (pure, node-testable) |
+| `js/game/` | simulation — `core` (events, collision), `state` (runs/floors/save restore), `combat`, `ai`, `inventory`, `town` (services + quest board), `update` (frame step), `world` (chunk activation, mouths, waystones) |
 | `js/render/` | world drawing — `core` (color/visibility), `tiles`, `icons`, `fixtures`, `monster`, `player`, `draw` (scene composition) |
 | `js/ui/` | HUD & panels — `core` (layout), `input`, `orbs`, `hud`, `panels`, `tooltip`, `creation`, `draw` (HUD composition) |
 | `js/main.js` | boot, canvas sizing, input capture, rAF loop |

@@ -31,9 +31,16 @@
     I.drawDescentBanner(ctx, state, view);
 
     // Location title (top center).
-    const locLabel = state.inTown
-      ? 'Ashfall Camp — Town'
-      : `Floor ${state.floor} — ${state.dungeon.theme.name}`;
+    // Out in the world the place-name is the biome, and the ring stands in for
+    // depth — how far from Ashfall is the one axis danger runs along out here.
+    let locLabel;
+    if (state.inTown) locLabel = 'Ashfall Camp — Town';
+    else if (state.inWorld) {
+      const World = typeof window !== 'undefined' ? window.World : require('../world.js');
+      const c = World.chunkOf(Math.floor(state.player.x / Dungeon.TILE_SIZE), Math.floor(state.player.y / Dungeon.TILE_SIZE));
+      const ring = World.ringOf(c.cx, c.cy);
+      locLabel = ring === 0 ? 'Ashfall Camp' : `${state.dungeon.theme.name} — ${ring} from home`;
+    } else locLabel = `Floor ${state.floor} — ${state.dungeon.theme.name}`;
     ctx.font = `bold 15px ${SERIF}`;
     ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
@@ -45,7 +52,7 @@
     // Controls hint (top left) + portal status.
     ctx.font = `10px ${SANS}`;
     ctx.fillStyle = 'rgba(215,200,175,0.45)';
-    ctx.fillText('WASD move · Mouse aim · Click attack · SPACE dodge · F/G/H skills · K skill tree · C stats · E pick up / buy / read · 1-4 potions · T town portal · I inventory · N sound', 12, 20);
+    ctx.fillText('WASD move · Mouse aim · Click attack · SPACE dodge · F/G/H skills · K skill tree · C stats · E pick up / buy / read · 1-4 potions · T town portal · I inventory · M map · N sound', 12, 20);
     if (state.portalCdT > 0) {
       ctx.fillStyle = 'rgba(140,175,230,0.7)';
       ctx.fillText(`Portal ready in ${Math.ceil(state.portalCdT)}s`, 12, 35);
@@ -138,6 +145,7 @@
     if (state.treeOpen) I.drawTree(ctx, state, view, L);
     if (state.boardOpen) I.drawBoard(ctx, state, view, L);
     if (state.statsOpen) I.drawStats(ctx, state, view, L);
+    if (state.mapOpen) I.drawWorldMap(ctx, state, view);
     I.drawTooltip(ctx, state, view);
 
     // Floor-transition fade + title card.

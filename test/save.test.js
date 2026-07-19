@@ -53,15 +53,17 @@ test('write/load round-trips a run and fromSave rebuilds the same world', () => 
   assert.deepEqual(restoredSword, JSON.parse(JSON.stringify(sword)));
   assert.ok(restored.bag.belt.some((p) => p && p.slot === 'potion'), 'belt potion survives');
 
-  // Dungeon must regenerate identically from (runSeed, floor).
-  const expected = Dungeon.generateDungeon(777, 4);
-  assert.deepEqual(restored.dungeon.grid, expected.grid);
-  const expectedCount = expected.spawns.length + (expected.boss ? 1 : 0);
-  assert.equal(restored.monsters.length, expectedCount, 'monsters repopulated (boss included on even floors)');
-  // Player stands at the entry of the regenerated floor.
+  // A save resumes on the continent: the hero is the durable thing, and the
+  // place they stand regenerates from the world seed. (Dungeon floors still
+  // regenerate identically from their own seed — see test/overworld.test.js,
+  // where a mouth's dungeon is pinned against D.generateDungeon.)
+  assert.equal(restored.inWorld, true, 'a save should resume in the overworld');
+  assert.equal(restored.dungeon.overworld, true);
+  assert.equal(restored.worldSeed, state.worldSeed, 'the world seed must round-trip');
   const ts = Dungeon.TILE_SIZE;
-  assert.equal(Math.floor(restored.player.x / ts), expected.entry.x);
-  assert.equal(Math.floor(restored.player.y / ts), expected.entry.y);
+  const tx = Math.floor(restored.player.x / ts);
+  const ty = Math.floor(restored.player.y / ts);
+  assert.ok(Dungeon.isWalkable(restored.dungeon.grid[ty][tx]), 'resumed standing inside terrain');
   // Transient combat fields are rebuilt fresh.
   assert.equal(restored.player.healPool, 0);
   assert.equal(restored.player.swing, null);
